@@ -6,6 +6,7 @@ pub type Token {
   // Literals
   Ident(String)
   Int(String)
+  UInt(String)
   Float(String)
   String(String)
   Bool(Bool)
@@ -368,6 +369,7 @@ fn lex_string(
 
 pub type NumberLexerMode {
   LexInt
+  LexUInt
   LexFloat
   LexFloatExponent
 }
@@ -402,12 +404,24 @@ fn lex_number(
 
     // Anything else and the number is terminated
     source -> {
-      let size = byte_size(content)
-      let lexer = Lexer(source, start + size)
+      let content_size = byte_size(content)
+
+      let #(lexer, content, size, mode) = case source |> string.first {
+        Ok("u" as l) | Ok("U" as l) -> #(
+          Lexer(source |> string.drop_left(1), start + content_size + 1),
+          content <> l,
+          content_size + 1,
+          LexUInt,
+        )
+        _ -> #(Lexer(source, start + content_size), content, content_size, mode)
+      }
+
       let token = case mode {
         LexInt -> Int(content)
+        LexUInt -> UInt(content)
         LexFloat | LexFloatExponent -> Float(content)
       }
+
       #(lexer, #(token, Position(start, size)))
     }
   }

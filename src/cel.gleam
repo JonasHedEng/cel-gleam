@@ -4,7 +4,6 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
-import gleam/result
 import gleam/string
 import nibble.{type Parser}
 import nibble/lexer as nibblexer
@@ -32,6 +31,7 @@ pub type RelationOp {
 
 pub type Atom {
   Int(Int)
+  UInt(Int)
   Float(Float)
   String(String)
   Bool(Bool)
@@ -55,6 +55,7 @@ fn expr_to_string(expr: Expression) -> String {
       <> expr_to_string(rhs)
     }
     Atom(Int(n)) -> int.to_string(n)
+    Atom(UInt(n)) -> int.to_string(n) <> "u"
     Atom(Float(n)) -> float.to_string(n)
     Atom(String(s)) -> s
     Atom(Null) -> "null"
@@ -163,6 +164,11 @@ fn atom_parser(_) -> Parser(Expression, lexer.Token, Context) {
       let assert Ok(i) = int.parse(n)
       Int(i) |> Atom |> Some
     }
+    lexer.UInt(n) -> {
+      let excl_suffix = string.drop_right(n, 1)
+      let assert Ok(i) = int.parse(excl_suffix)
+      UInt(i) |> Atom |> Some
+    }
     lexer.Float(n) -> {
       let assert Ok(f) = float.parse(n)
       Float(f) |> Atom |> Some
@@ -207,7 +213,7 @@ fn lexer_to_nibble_token(
 }
 
 pub fn main() {
-  let source = "5 + a * 3 <= (b + 'fi\"sh') / 2"
+  let source = "5 + a * 3U <= (b + 'fi\"sh') / 2"
   let source_line_lengths =
     source |> string.split("\n") |> list.map(string.length)
 
