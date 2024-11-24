@@ -29,6 +29,11 @@ pub type RelationOp {
   In
 }
 
+pub type UnaryOp {
+  Not
+  UnarySub
+}
+
 pub type Atom {
   Int(Int)
   UInt(Int)
@@ -41,57 +46,58 @@ pub type Atom {
 pub type Expression {
   Arithmetic(Expression, ArithmeticOp, Expression)
   Relation(Expression, RelationOp, Expression)
+  Unary(UnaryOp, Expression)
   Atom(Atom)
   Ident(String)
 }
 
-fn expr_to_string(expr: Expression) -> String {
-  case expr {
-    Arithmetic(lhs, op, rhs) -> {
-      expr_to_string(lhs)
-      <> " "
-      <> aop_to_string(op)
-      <> " "
-      <> expr_to_string(rhs)
-    }
-    Atom(Int(n)) -> int.to_string(n)
-    Atom(UInt(n)) -> int.to_string(n) <> "u"
-    Atom(Float(n)) -> float.to_string(n)
-    Atom(String(s)) -> s
-    Atom(Null) -> "null"
-    Atom(Bool(b)) -> bool.to_string(b)
-    Ident(i) -> i
-    Relation(lhs, op, rhs) -> {
-      expr_to_string(lhs)
-      <> " "
-      <> rop_to_string(op)
-      <> " "
-      <> expr_to_string(rhs)
-    }
-  }
-}
+// fn expr_to_string(expr: Expression) -> String {
+//   case expr {
+//     Arithmetic(lhs, op, rhs) -> {
+//       expr_to_string(lhs)
+//       <> " "
+//       <> aop_to_string(op)
+//       <> " "
+//       <> expr_to_string(rhs)
+//     }
+//     Atom(Int(n)) -> int.to_string(n)
+//     Atom(UInt(n)) -> int.to_string(n) <> "u"
+//     Atom(Float(n)) -> float.to_string(n)
+//     Atom(String(s)) -> s
+//     Atom(Null) -> "null"
+//     Atom(Bool(b)) -> bool.to_string(b)
+//     Ident(i) -> i
+//     Relation(lhs, op, rhs) -> {
+//       expr_to_string(lhs)
+//       <> " "
+//       <> rop_to_string(op)
+//       <> " "
+//       <> expr_to_string(rhs)
+//     }
+//   }
+// }
 
-fn aop_to_string(op: ArithmeticOp) -> String {
-  case op {
-    Add -> "+"
-    Sub -> "-"
-    Mul -> "*"
-    Div -> "/"
-    Mod -> "%"
-  }
-}
+// fn aop_to_string(op: ArithmeticOp) -> String {
+//   case op {
+//     Add -> "+"
+//     Sub -> "-"
+//     Mul -> "*"
+//     Div -> "/"
+//     Mod -> "%"
+//   }
+// }
 
-fn rop_to_string(op: RelationOp) -> String {
-  case op {
-    Equals -> "=="
-    NotEquals -> "!="
-    LessThanEq -> "<="
-    LessThan -> "<"
-    GreaterThanEq -> ">="
-    GreaterThan -> ">"
-    In -> "in"
-  }
-}
+// fn rop_to_string(op: RelationOp) -> String {
+//   case op {
+//     Equals -> "=="
+//     NotEquals -> "!="
+//     LessThanEq -> "<="
+//     LessThan -> "<"
+//     GreaterThanEq -> ">="
+//     GreaterThan -> ">"
+//     In -> "in"
+//   }
+// }
 
 type Context {
   // InList
@@ -101,10 +107,6 @@ type Context {
 }
 
 fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
-  nibble.one_of([binop_expression_parser()])
-}
-
-fn binop_expression_parser() -> Parser(Expression, lexer.Token, Context) {
   let add = fn(lhs, rhs) { Arithmetic(lhs, Add, rhs) }
   let sub = fn(lhs, rhs) { Arithmetic(lhs, Sub, rhs) }
   let mul = fn(lhs, rhs) { Arithmetic(lhs, Mul, rhs) }
@@ -118,21 +120,30 @@ fn binop_expression_parser() -> Parser(Expression, lexer.Token, Context) {
   let neq = fn(lhs, rhs) { Relation(lhs, NotEquals, rhs) }
   let in = fn(lhs, rhs) { Relation(lhs, In, rhs) }
 
+  let not = fn(expr) { Unary(Not, expr) }
+  let unary_sub = fn(expr) { Unary(UnarySub, expr) }
+
   pratt.expression(
-    one_of: [atom_parser, ident_parser, parens_parser],
+    one_of: [
+      atom_parser,
+      ident_parser,
+      parens_parser,
+      pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
+      pratt.prefix(8, nibble.token(lexer.Sub), unary_sub),
+    ],
     and_then: [
       pratt.infix_left(7, nibble.token(lexer.Mul), mul),
       pratt.infix_left(7, nibble.token(lexer.Div), div),
       pratt.infix_left(7, nibble.token(lexer.Mod), mod),
       pratt.infix_left(6, nibble.token(lexer.Add), add),
       pratt.infix_left(6, nibble.token(lexer.Sub), sub),
-      pratt.infix_left(4, nibble.token(lexer.LessThanEq), lte),
-      pratt.infix_left(4, nibble.token(lexer.LessThan), lt),
-      pratt.infix_left(4, nibble.token(lexer.GreaterThanEq), gte),
-      pratt.infix_left(4, nibble.token(lexer.GreaterThan), gte),
-      pratt.infix_left(3, nibble.token(lexer.Equals), eq),
-      pratt.infix_left(3, nibble.token(lexer.NotEquals), neq),
-      pratt.infix_left(3, nibble.token(lexer.In), in),
+      pratt.infix_left(5, nibble.token(lexer.LessThanEq), lte),
+      pratt.infix_left(5, nibble.token(lexer.LessThan), lt),
+      pratt.infix_left(5, nibble.token(lexer.GreaterThanEq), gte),
+      pratt.infix_left(5, nibble.token(lexer.GreaterThan), gte),
+      pratt.infix_left(5, nibble.token(lexer.Equals), eq),
+      pratt.infix_left(5, nibble.token(lexer.NotEquals), neq),
+      pratt.infix_left(5, nibble.token(lexer.In), in),
     ],
     dropping: nibble.succeed(Nil),
   )
@@ -185,9 +196,9 @@ fn byte_offset_to_coords(
 ) -> #(Int, Int) {
   source_line_lengths
   |> list.fold_until(#(0, byte_offset), fn(acc, line_length) {
-    case acc.1 < line_length {
+    case acc.1 <= line_length {
       True -> list.Stop(acc)
-      False -> list.Continue(#(acc.0 + 1, acc.1 - line_length))
+      False -> list.Continue(#(acc.0 + 1, acc.1 - 1 - line_length))
     }
   })
 }
@@ -213,7 +224,12 @@ fn lexer_to_nibble_token(
 }
 
 pub fn main() {
-  let source = "5 + a * 3U <= (b + 'fi\"sh') / 2"
+  // let source =
+  //   "5 + a * 3U
+  //   <= (
+  //   !b + 'fi\"sh') / 2"
+
+  let source = "!(b + 5)"
   let source_line_lengths =
     source |> string.split("\n") |> list.map(string.length)
 
@@ -235,9 +251,9 @@ pub fn main() {
 
   parsed |> io.debug
 
-  parsed
-  |> expr_to_string
-  |> io.println
+  // parsed
+  // |> expr_to_string
+  // |> io.println
 
   Nil
 }

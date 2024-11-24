@@ -404,17 +404,18 @@ fn lex_number(
 
     // Anything else and the number is terminated
     source -> {
-      let content_size = byte_size(content)
-
-      let #(lexer, content, size, mode) = case source |> string.first {
-        Ok("u" as l) | Ok("U" as l) -> #(
-          Lexer(source |> string.drop_left(1), start + content_size + 1),
-          content <> l,
-          content_size + 1,
+      let #(source, content, mode) = case string.pop_grapheme(source) {
+        // Try to extract optional UInt suffix
+        Ok(#("u" as suffix, rest)) | Ok(#("U" as suffix, rest)) -> #(
+          rest,
+          content <> suffix,
           LexUInt,
         )
-        _ -> #(Lexer(source, start + content_size), content, content_size, mode)
+        _ -> #(source, content, mode)
       }
+
+      let size = byte_size(content)
+      let lexer = Lexer(source, start + size)
 
       let token = case mode {
         LexInt -> Int(content)
