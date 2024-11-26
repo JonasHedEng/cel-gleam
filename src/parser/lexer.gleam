@@ -369,7 +369,6 @@ fn lex_string(
 
 pub type NumberLexerMode {
   LexInt
-  LexUInt
   LexFloat
   LexFloatExponent
 }
@@ -402,24 +401,21 @@ fn lex_number(
     "8" <> source -> lex_number(source, content <> "8", mode, start)
     "9" <> source -> lex_number(source, content <> "9", mode, start)
 
+    "u" as suffix <> source | "U" as suffix <> source if mode == LexInt -> {
+      let size = byte_size(content <> suffix)
+      let lexer = Lexer(source, start + size)
+      let token = UInt(content <> suffix)
+
+      #(lexer, #(token, Position(start, size)))
+    }
+
     // Anything else and the number is terminated
     source -> {
-      let #(source, content, mode) = case string.pop_grapheme(source) {
-        // Try to extract optional UInt suffix
-        Ok(#("u" as suffix, rest)) | Ok(#("U" as suffix, rest)) -> #(
-          rest,
-          content <> suffix,
-          LexUInt,
-        )
-        _ -> #(source, content, mode)
-      }
-
       let size = byte_size(content)
       let lexer = Lexer(source, start + size)
 
       let token = case mode {
         LexInt -> Int(content)
-        LexUInt -> UInt(content)
         LexFloat | LexFloatExponent -> Float(content)
       }
 
