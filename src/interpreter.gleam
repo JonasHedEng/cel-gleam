@@ -347,6 +347,10 @@ fn evaluate_expr(
       evaluate_ternary(cond, then, otherwise, ctx)
     parser.Unary(op, unary_expr) -> evaluate_unary(op, unary_expr, ctx)
 
+    parser.List(exprs) -> {
+      let values = list.try_map(exprs, fn(l) { evaluate_expr(l, ctx) })
+      values |> result.map(List)
+    }
     parser.Atom(parser.Int(n)) -> Int(n) |> Ok
     parser.Atom(parser.UInt(n)) -> UInt(n) |> Ok
     parser.Atom(parser.Bool(b)) -> Bool(b) |> Ok

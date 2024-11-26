@@ -56,6 +56,8 @@ pub type Expression {
 
   Ternary(Expression, Expression, Expression)
 
+  List(List(Expression))
+
   Atom(Atom)
   Ident(String)
 }
@@ -109,7 +111,7 @@ pub type Expression {
 // }
 
 type Context {
-  // InList
+  InList
   // InMap
   // InTernary
   InSubExpr
@@ -140,9 +142,9 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
       atom_parser,
       ident_parser,
       parens_parser,
+      list_parser,
       pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
       pratt.prefix(8, nibble.token(lexer.Sub), unary_sub),
-      // pratt.sub_expression(conditional_parser, 2),
     ],
     and_then: [
       pratt.infix_left(7, nibble.token(lexer.Mul), mul),
@@ -164,15 +166,26 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   )
 }
 
-// fn conditional_parser() {
-//   use cond <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
-//   use _ <- nibble.do(nibble.token(lexer.Colon))
-//   use then <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
-//   use _ <- nibble.do(nibble.token(lexer.QuestionMark))
-//   use otherwise <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
+fn ternary_parser(_) {
+  use cond <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
+  use _ <- nibble.do(nibble.token(lexer.Colon))
+  use then <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
+  use _ <- nibble.do(nibble.token(lexer.QuestionMark))
+  use otherwise <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
 
-//   nibble.return(Ternary(cond, then, otherwise))
-// }
+  nibble.return(Ternary(cond, then, otherwise))
+}
+
+fn list_parser(_) -> Parser(Expression, lexer.Token, Context) {
+  use _ <- nibble.do(nibble.token(lexer.LeftSquare))
+  use exprs <- nibble.do_in(
+    InList,
+    nibble.sequence(expression_parser(), nibble.token(lexer.Comma)),
+  )
+  use _ <- nibble.do(nibble.token(lexer.RightSquare))
+
+  nibble.return(List(exprs))
+}
 
 fn parens_parser(_) -> Parser(Expression, lexer.Token, Context) {
   use _ <- nibble.do(nibble.token(lexer.LeftParen))
