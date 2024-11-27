@@ -41,6 +41,7 @@ pub type Token {
   At
   Dot
   Colon
+  SemiColon
   Comma
   ExclamationMark
   Hash

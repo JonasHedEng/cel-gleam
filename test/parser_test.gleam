@@ -1,3 +1,4 @@
+import gleam/io
 import gleeunit/should
 
 import parser as p
@@ -48,4 +49,35 @@ pub fn parse_nested_ternary_test() {
 
   parsed
   |> should.equal(Ok(expected))
+}
+
+pub fn parse_map_test() {
+  let map_src = "{'a': 1, 'b': 2, 'c': 3}"
+
+  let assert Ok(parsed) = p.parse(map_src)
+
+  let expected =
+    p.Map([
+      #(p.String("a"), p.Atom(p.Int(1))),
+      #(p.String("b"), p.Atom(p.Int(2))),
+      #(p.String("c"), p.Atom(p.Int(3))),
+    ])
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_member_field_test() {
+  let map_src = "obj.field.inner"
+
+  let assert Ok(parsed) = p.parse(map_src)
+
+  let expected =
+    p.Member(
+      p.Member(p.Ident("obj"), p.Attribute("field")),
+      p.Attribute("inner"),
+    )
+
+  parsed
+  |> should.equal(expected)
 }

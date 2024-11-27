@@ -47,6 +47,12 @@ pub type Atom {
   Null
 }
 
+pub type Member {
+  Attribute(String)
+  Index(Expression)
+  // Fields(List(#(String, Expression)))
+}
+
 pub type Expression {
   Arithmetic(Expression, ArithmeticOp, Expression)
   Relation(Expression, RelationOp, Expression)
@@ -58,7 +64,11 @@ pub type Expression {
   Ternary(Expression, Expression, Expression)
 
   List(List(Expression))
+  Map(List(#(Atom, Expression)))
 
+  Member(Expression, Member)
+
+  // FunctionCall(Expression, Option(Expression), List(Expression))
   Atom(Atom)
   Ident(String)
 }
@@ -113,8 +123,7 @@ pub type Expression {
 
 type Context {
   InList
-  // InMap
-  // InTernary
+  InMap
   InSubExpr
 }
 
@@ -149,16 +158,25 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     }
   }
 
+  let member_attribute = fn(left, right) {
+    case right {
+      Ident(s) -> Member(left, Attribute(s))
+      other -> other
+    }
+  }
+
   pratt.expression(
     one_of: [
-      atom_parser,
+      atom_expr_parser,
       ident_parser,
       parens_parser,
       list_parser,
+      map_parser,
       pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
       pratt.prefix(8, nibble.token(lexer.Minus), unary_sub),
     ],
     and_then: [
+      pratt.infix_left(9, nibble.token(lexer.Dot), member_attribute),
       pratt.infix_left(7, nibble.token(lexer.Star), mul),
       pratt.infix_left(7, nibble.token(lexer.Slash), div),
       pratt.infix_left(7, nibble.token(lexer.Percent), mod),
@@ -178,6 +196,25 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     ],
     dropping: nibble.succeed(Nil),
   )
+}
+
+fn map_parser(_) -> Parser(Expression, lexer.Token, Context) {
+  use _ <- nibble.do(nibble.token(lexer.LeftCurly))
+  use fields <- nibble.do_in(
+    InMap,
+    nibble.sequence(field_parser(), nibble.token(lexer.Comma)),
+  )
+  use _ <- nibble.do(nibble.token(lexer.RightCurly))
+
+  nibble.return(Map(fields))
+}
+
+fn field_parser() -> Parser(#(Atom, Expression), lexer.Token, Context) {
+  use key <- nibble.do(atom_parser(Nil))
+  use _ <- nibble.do(nibble.token(lexer.Colon))
+  use value <- nibble.do(expression_parser())
+
+  nibble.return(#(key, value))
 }
 
 fn list_parser(_) -> Parser(Expression, lexer.Token, Context) {
@@ -208,27 +245,33 @@ fn ident_parser(_) -> Parser(Expression, lexer.Token, Context) {
   }
 }
 
-fn atom_parser(_) -> Parser(Expression, lexer.Token, Context) {
+fn atom_expr_parser(_) -> Parser(Expression, lexer.Token, Context) {
+  use atom <- nibble.do(atom_parser(Nil))
+
+  nibble.return(Atom(atom))
+}
+
+fn atom_parser(_) -> Parser(Atom, lexer.Token, Context) {
   use tok <- nibble.take_map("STRING | INT | FLOAT | BOOL | NULL | IDENT")
 
   case tok {
-    lexer.String(s) -> String(s) |> Atom |> Some
+    lexer.String(s) -> String(s) |> Some
     lexer.Int(n) -> {
       let assert Ok(i) = int.parse(n)
-      Int(i) |> Atom |> Some
+      Int(i) |> Some
     }
     lexer.UInt(n) -> {
       let excl_suffix = string.drop_right(n, 1)
       let assert Ok(i) = int.parse(excl_suffix)
 
-      UInt(i) |> Atom |> Some
+      UInt(i) |> Some
     }
     lexer.Float(n) -> {
       let assert Ok(f) = float.parse(n)
-      Float(f) |> Atom |> Some
+      Float(f) |> Some
     }
-    lexer.Bool(b) -> Bool(b) |> Atom |> Some
-    lexer.Null -> Null |> Atom |> Some
+    lexer.Bool(b) -> Bool(b) |> Some
+    lexer.Null -> Null |> Some
     _ -> None
   }
 }

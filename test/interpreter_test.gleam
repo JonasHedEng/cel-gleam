@@ -1,17 +1,20 @@
+import gleam/dict
 import gleam/io
+import glearray
 import gleeunit/should
 
 import interpreter
+import interpreter/value
 
 pub fn resolve_and_compute_test() {
   let source = "a + 5u"
   let assert Ok(program) = interpreter.new(source)
 
   let ctx =
-    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+    interpreter.empty() |> interpreter.insert_variable("a", value.UInt(2))
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(interpreter.UInt(7)))
+  |> should.equal(Ok(value.UInt(7)))
 }
 
 pub fn list_test() {
@@ -19,12 +22,15 @@ pub fn list_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let ctx =
-    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+    interpreter.empty() |> interpreter.insert_variable("a", value.UInt(2))
+
+  let expected =
+    [value.UInt(7), value.UInt(1)]
+    |> glearray.from_list
+    |> value.List
 
   interpreter.execute(program, ctx)
-  |> should.equal(
-    Ok(interpreter.List([interpreter.UInt(7), interpreter.UInt(1)])),
-  )
+  |> should.equal(Ok(expected))
 }
 
 pub fn ternary_test() {
@@ -32,10 +38,10 @@ pub fn ternary_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let ctx =
-    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+    interpreter.empty() |> interpreter.insert_variable("a", value.UInt(2))
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(interpreter.Int(3)))
+  |> should.equal(Ok(value.Int(3)))
 }
 
 pub fn nested_ternary_test() {
@@ -44,9 +50,63 @@ pub fn nested_ternary_test() {
 
   let ctx =
     interpreter.empty()
-    |> interpreter.insert_variable("a", interpreter.UInt(1))
-    |> interpreter.insert_variable("b", interpreter.UInt(3))
+    |> interpreter.insert_variable("a", value.UInt(1))
+    |> interpreter.insert_variable("b", value.UInt(3))
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(interpreter.Int(4)))
+  |> should.equal(Ok(value.Int(4)))
+}
+
+pub fn in_map_test() {
+  let source = "2 in dict ? false : 'b' in dict"
+  let assert Ok(program) = interpreter.new(source)
+
+  let map =
+    value.Map(
+      [
+        #(value.KeyString("a"), value.Int(1)),
+        #(value.KeyString("b"), value.Int(2)),
+        #(value.KeyString("c"), value.Int(3)),
+      ]
+      |> dict.from_list,
+    )
+
+  let ctx =
+    interpreter.empty()
+    |> interpreter.insert_variable("dict", map)
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.Bool(True)))
+}
+
+pub fn member_field_test() {
+  let source = "arr[obj.field.inner]"
+  let assert Ok(program) = interpreter.new(source) |> io.debug
+
+  let obj =
+    value.Map(
+      [
+        #(
+          value.KeyString("field"),
+          value.Map(
+            [#(value.KeyString("inner"), value.Int(1))]
+            |> dict.from_list,
+          ),
+        ),
+      ]
+      |> dict.from_list,
+    )
+
+  let arr =
+    [value.String("a"), value.String("b"), value.String("c")]
+    |> glearray.from_list
+    |> value.List
+
+  let ctx =
+    interpreter.empty()
+    |> interpreter.insert_variable("obj", obj)
+    |> interpreter.insert_variable("arr", arr)
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.String("b")))
 }
