@@ -1,3 +1,4 @@
+import gleam/io
 import gleeunit/should
 
 import interpreter
@@ -24,4 +25,28 @@ pub fn list_test() {
   |> should.equal(
     Ok(interpreter.List([interpreter.UInt(7), interpreter.UInt(1)])),
   )
+}
+
+pub fn ternary_test() {
+  let source = "a == 2 ? 3 : 5"
+  let assert Ok(program) = interpreter.new(source)
+
+  let ctx =
+    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(interpreter.Int(3)))
+}
+
+pub fn nested_ternary_test() {
+  let source = "a == 1 ? b > 3 ? 2 : 4 : 6"
+  let assert Ok(program) = interpreter.new(source)
+
+  let ctx =
+    interpreter.empty()
+    |> interpreter.insert_variable("a", interpreter.UInt(1))
+    |> interpreter.insert_variable("b", interpreter.UInt(3))
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(interpreter.Int(4)))
 }

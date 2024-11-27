@@ -1,6 +1,5 @@
 import gleam/float
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -54,6 +53,8 @@ pub type Expression {
   Logical(Expression, LogicalOp, Expression)
   Unary(UnaryOp, Expression)
 
+  TernaryCond(Expression, Expression)
+  TernaryFork(Expression, Expression)
   Ternary(Expression, Expression, Expression)
 
   List(List(Expression))
@@ -127,6 +128,7 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   let lte = fn(lhs, rhs) { Relation(lhs, LessThanEq, rhs) }
   let lt = fn(lhs, rhs) { Relation(lhs, LessThan, rhs) }
   let gte = fn(lhs, rhs) { Relation(lhs, GreaterThanEq, rhs) }
+  let gt = fn(lhs, rhs) { Relation(lhs, GreaterThan, rhs) }
   let eq = fn(lhs, rhs) { Relation(lhs, Equals, rhs) }
   let neq = fn(lhs, rhs) { Relation(lhs, NotEquals, rhs) }
   let in = fn(lhs, rhs) { Relation(lhs, In, rhs) }
@@ -137,6 +139,16 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   let not = fn(expr) { Unary(Not, expr) }
   let unary_sub = fn(expr) { Unary(UnarySub, expr) }
 
+  let ternary_fork = fn(then, otherwise) { TernaryFork(then, otherwise) }
+  let ternary_cond = fn(left, right) {
+    case right {
+      TernaryFork(then, TernaryFork(fork_then, fork_otherwise)) ->
+        TernaryFork(Ternary(left, then, fork_then), fork_otherwise)
+      TernaryFork(then, otherwise) -> Ternary(left, then, otherwise)
+      other -> other
+    }
+  }
+
   pratt.expression(
     one_of: [
       atom_parser,
@@ -144,36 +156,28 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
       parens_parser,
       list_parser,
       pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
-      pratt.prefix(8, nibble.token(lexer.Sub), unary_sub),
+      pratt.prefix(8, nibble.token(lexer.Minus), unary_sub),
     ],
     and_then: [
-      pratt.infix_left(7, nibble.token(lexer.Mul), mul),
-      pratt.infix_left(7, nibble.token(lexer.Div), div),
-      pratt.infix_left(7, nibble.token(lexer.Mod), mod),
-      pratt.infix_left(6, nibble.token(lexer.Add), add),
-      pratt.infix_left(6, nibble.token(lexer.Sub), sub),
+      pratt.infix_left(7, nibble.token(lexer.Star), mul),
+      pratt.infix_left(7, nibble.token(lexer.Slash), div),
+      pratt.infix_left(7, nibble.token(lexer.Percent), mod),
+      pratt.infix_left(6, nibble.token(lexer.Plus), add),
+      pratt.infix_left(6, nibble.token(lexer.Minus), sub),
       pratt.infix_left(5, nibble.token(lexer.LessThanEq), lte),
       pratt.infix_left(5, nibble.token(lexer.LessThan), lt),
       pratt.infix_left(5, nibble.token(lexer.GreaterThanEq), gte),
-      pratt.infix_left(5, nibble.token(lexer.GreaterThan), gte),
+      pratt.infix_left(5, nibble.token(lexer.GreaterThan), gt),
       pratt.infix_left(5, nibble.token(lexer.Equals), eq),
       pratt.infix_left(5, nibble.token(lexer.NotEquals), neq),
       pratt.infix_left(5, nibble.token(lexer.In), in),
       pratt.infix_left(4, nibble.token(lexer.And), and),
       pratt.infix_left(3, nibble.token(lexer.Or), or),
+      pratt.infix_right(2, nibble.token(lexer.Colon), ternary_fork),
+      pratt.infix_right(1, nibble.token(lexer.QuestionMark), ternary_cond),
     ],
     dropping: nibble.succeed(Nil),
   )
-}
-
-fn ternary_parser(_) {
-  use cond <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
-  use _ <- nibble.do(nibble.token(lexer.Colon))
-  use then <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
-  use _ <- nibble.do(nibble.token(lexer.QuestionMark))
-  use otherwise <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
-
-  nibble.return(Ternary(cond, then, otherwise))
 }
 
 fn list_parser(_) -> Parser(Expression, lexer.Token, Context) {
@@ -290,6 +294,15 @@ pub fn parse(source: String) -> Result(Expression, ParseError) {
     |> list.map(fn(token) {
       lexer_to_nibble_token(token, source, source_line_lengths)
     })
+
+  // Debug lexing/parsing
+  // io.debug(
+  //   tokens
+  //   |> list.map(fn(t) {
+  //     let nibblexer.Token(_, lexeme: l, value: token) = t
+  //     #(l, token)
+  //   }),
+  // )
 
   let parsed =
     nibble.run(tokens, expression_parser())

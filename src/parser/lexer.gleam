@@ -13,11 +13,11 @@ pub type Token {
   Null
 
   // Arithmetic
-  Add
-  Sub
-  Mul
-  Div
-  Mod
+  Plus
+  Minus
+  Star
+  Slash
+  Percent
 
   // Relation
   LessThan
@@ -33,8 +33,8 @@ pub type Token {
 
   LeftParen
   RightParen
-  LeftBrace
-  RightBrace
+  LeftCurly
+  RightCurly
   LeftSquare
   RightSquare
 
@@ -154,8 +154,8 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
     // Groupings
     "(" <> rest -> #(advance(lexer, rest, 1), token(lexer, LeftParen, 1))
     ")" <> rest -> #(advance(lexer, rest, 1), token(lexer, RightParen, 1))
-    "{" <> rest -> #(advance(lexer, rest, 1), token(lexer, LeftBrace, 1))
-    "}" <> rest -> #(advance(lexer, rest, 1), token(lexer, RightBrace, 1))
+    "{" <> rest -> #(advance(lexer, rest, 1), token(lexer, LeftCurly, 1))
+    "}" <> rest -> #(advance(lexer, rest, 1), token(lexer, RightCurly, 1))
     "[" <> rest -> #(advance(lexer, rest, 1), token(lexer, LeftSquare, 1))
     "]" <> rest -> #(advance(lexer, rest, 1), token(lexer, RightSquare, 1))
 
@@ -179,11 +179,11 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
     ">" <> rest -> #(advance(lexer, rest, 1), token(lexer, GreaterThan, 1))
 
     // Int Operators
-    "+" <> rest -> #(advance(lexer, rest, 1), token(lexer, Add, 1))
-    "-" <> rest -> #(advance(lexer, rest, 1), token(lexer, Sub, 1))
-    "*" <> rest -> #(advance(lexer, rest, 1), token(lexer, Mul, 1))
-    "/" <> rest -> #(advance(lexer, rest, 1), token(lexer, Div, 1))
-    "%" <> rest -> #(advance(lexer, rest, 1), token(lexer, Mod, 1))
+    "+" <> rest -> #(advance(lexer, rest, 1), token(lexer, Plus, 1))
+    "-" <> rest -> #(advance(lexer, rest, 1), token(lexer, Minus, 1))
+    "*" <> rest -> #(advance(lexer, rest, 1), token(lexer, Star, 1))
+    "/" <> rest -> #(advance(lexer, rest, 1), token(lexer, Slash, 1))
+    "%" <> rest -> #(advance(lexer, rest, 1), token(lexer, Percent, 1))
 
     // Strings
     "\"" <> rest -> lex_string(rest, "", "\"", lexer.position)

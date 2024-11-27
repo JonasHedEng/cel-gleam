@@ -137,6 +137,7 @@ pub type ExecutionError {
   InvalidAsKey(Value)
   UnsupportedTernaryCondition(Type)
   ArithmeticError
+  IntermediateTernaryFound(String)
 }
 
 fn evaluate_arith(
@@ -238,6 +239,14 @@ fn evaluate_relation(
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
   case lhs_value, op, rhs_value {
+    Int(l), parser.Equals, Float(r) -> Bool(int.to_float(l) == r) |> Ok
+    UInt(l), parser.Equals, Float(r) -> Bool(int.to_float(l) == r) |> Ok
+    Float(l), parser.Equals, Int(r) -> Bool(l == int.to_float(r)) |> Ok
+    Float(l), parser.Equals, UInt(r) -> Bool(l == int.to_float(r)) |> Ok
+
+    UInt(l), parser.Equals, Int(r) -> Bool(l == r) |> Ok
+    Int(l), parser.Equals, UInt(r) -> Bool(l == r) |> Ok
+
     l, parser.Equals, r -> Bool(l == r) |> Ok
     l, parser.NotEquals, r -> Bool(l != r) |> Ok
 
@@ -250,6 +259,16 @@ fn evaluate_relation(
     UInt(l), parser.LessThan, UInt(r) -> Bool(l < r) |> Ok
     UInt(l), parser.GreaterThanEq, UInt(r) -> Bool(l >= r) |> Ok
     UInt(l), parser.GreaterThan, UInt(r) -> Bool(l > r) |> Ok
+
+    Int(l), parser.LessThanEq, UInt(r) -> Bool(l <= r) |> Ok
+    Int(l), parser.LessThan, UInt(r) -> Bool(l < r) |> Ok
+    Int(l), parser.GreaterThanEq, UInt(r) -> Bool(l >= r) |> Ok
+    Int(l), parser.GreaterThan, UInt(r) -> Bool(l > r) |> Ok
+
+    UInt(l), parser.LessThanEq, Int(r) -> Bool(l <= r) |> Ok
+    UInt(l), parser.LessThan, Int(r) -> Bool(l < r) |> Ok
+    UInt(l), parser.GreaterThanEq, Int(r) -> Bool(l >= r) |> Ok
+    UInt(l), parser.GreaterThan, Int(r) -> Bool(l > r) |> Ok
 
     Int(l), parser.LessThanEq, Float(r) -> Bool(int.to_float(l) <=. r) |> Ok
     Int(l), parser.LessThan, Float(r) -> Bool(int.to_float(l) <. r) |> Ok
@@ -289,13 +308,13 @@ fn evaluate_relation(
     }
 
     l, parser.LessThanEq, r ->
-      UnsupportedBinop(to_type(l), "&&", to_type(r)) |> Error
+      UnsupportedBinop(to_type(l), "<=", to_type(r)) |> Error
     l, parser.LessThan, r ->
-      UnsupportedBinop(to_type(l), "||", to_type(r)) |> Error
+      UnsupportedBinop(to_type(l), "<", to_type(r)) |> Error
     l, parser.GreaterThanEq, r ->
-      UnsupportedBinop(to_type(l), "&&", to_type(r)) |> Error
+      UnsupportedBinop(to_type(l), ">=", to_type(r)) |> Error
     l, parser.GreaterThan, r ->
-      UnsupportedBinop(to_type(l), "||", to_type(r)) |> Error
+      UnsupportedBinop(to_type(l), ">", to_type(r)) |> Error
     l, parser.In, r -> UnsupportedBinop(to_type(l), "in", to_type(r)) |> Error
   }
 }
@@ -357,6 +376,9 @@ fn evaluate_expr(
     parser.Atom(parser.Float(f)) -> Float(f) |> Ok
     parser.Atom(parser.Null) -> Null |> Ok
     parser.Atom(parser.String(s)) -> String(s) |> Ok
+
+    parser.TernaryCond(_, _) -> IntermediateTernaryFound("Cond") |> Error
+    parser.TernaryFork(_, _) -> IntermediateTernaryFound("Fork") |> Error
   }
 }
 
