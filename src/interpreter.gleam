@@ -132,7 +132,7 @@ pub type ExecutionError {
   InvalidValueAsKey(Value)
   UnsupportedTernaryCondition(Type)
   ArithmeticError
-  IntermediateTernaryFound(String)
+  IntermediateFound(String)
 }
 
 fn evaluate_arith(
@@ -422,8 +422,9 @@ fn evaluate_expr(
     parser.Atom(parser.Null) -> v.Null |> Ok
     parser.Atom(parser.String(s)) -> v.String(s) |> Ok
 
-    parser.TernaryCond(_, _) -> IntermediateTernaryFound("Cond") |> Error
-    parser.TernaryFork(_, _) -> IntermediateTernaryFound("Fork") |> Error
+    parser.TernaryCond(_, _) -> IntermediateFound("Cond") |> Error
+    parser.TernaryFork(_, _) -> IntermediateFound("Fork") |> Error
+    parser.IntermediateIndex(_, _) -> IntermediateFound("Index") |> Error
   }
 }
 

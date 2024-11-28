@@ -1,5 +1,6 @@
 import gleam/float
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -67,6 +68,7 @@ pub type Expression {
   Map(List(#(Atom, Expression)))
 
   Member(Expression, Member)
+  IntermediateIndex(Expression, Expression)
 
   // FunctionCall(Expression, Option(Expression), List(Expression))
   Atom(Atom)
@@ -124,6 +126,7 @@ pub type Expression {
 type Context {
   InList
   InMap
+  InIndexOp
   InSubExpr
 }
 
@@ -165,6 +168,14 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     }
   }
 
+  let member_index_start = fn(left, right) { IntermediateIndex(left, right) }
+  let member_index_end = fn(left) {
+    case left {
+      IntermediateIndex(expr, index) -> Member(expr, Index(index))
+      other -> other
+    }
+  }
+
   pratt.expression(
     one_of: [
       atom_expr_parser,
@@ -174,9 +185,12 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
       map_parser,
       pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
       pratt.prefix(8, nibble.token(lexer.Minus), unary_sub),
+      // member_index_end,
     ],
     and_then: [
       pratt.infix_left(9, nibble.token(lexer.Dot), member_attribute),
+      pratt.infix_right(9, nibble.token(lexer.LeftSquare), member_index_start),
+      pratt.postfix(9, nibble.token(lexer.RightSquare), member_index_end),
       pratt.infix_left(7, nibble.token(lexer.Star), mul),
       pratt.infix_left(7, nibble.token(lexer.Slash), div),
       pratt.infix_left(7, nibble.token(lexer.Percent), mod),
@@ -212,7 +226,7 @@ fn map_parser(_) -> Parser(Expression, lexer.Token, Context) {
 fn field_parser() -> Parser(#(Atom, Expression), lexer.Token, Context) {
   use key <- nibble.do(atom_parser(Nil))
   use _ <- nibble.do(nibble.token(lexer.Colon))
-  use value <- nibble.do(expression_parser())
+  use value <- nibble.do(nibble.lazy(expression_parser))
 
   nibble.return(#(key, value))
 }
@@ -221,7 +235,7 @@ fn list_parser(_) -> Parser(Expression, lexer.Token, Context) {
   use _ <- nibble.do(nibble.token(lexer.LeftSquare))
   use exprs <- nibble.do_in(
     InList,
-    nibble.sequence(expression_parser(), nibble.token(lexer.Comma)),
+    nibble.sequence(nibble.lazy(expression_parser), nibble.token(lexer.Comma)),
   )
   use _ <- nibble.do(nibble.token(lexer.RightSquare))
 
@@ -315,7 +329,9 @@ pub type ParseError {
   DeadEnd(List(#(nibble.Error(lexer.Token), Int)))
 }
 
-pub fn parse(source: String) -> Result(Expression, ParseError) {
+pub fn tokenize(
+  source: String,
+) -> Result(List(nibblexer.Token(lexer.Token)), ParseError) {
   let source_line_lengths =
     source |> string.split("\n") |> list.map(string.length)
 
@@ -338,15 +354,12 @@ pub fn parse(source: String) -> Result(Expression, ParseError) {
       lexer_to_nibble_token(token, source, source_line_lengths)
     })
 
-  // Debug lexing/parsing
-  // io.debug(
-  //   tokens
-  //   |> list.map(fn(t) {
-  //     let nibblexer.Token(_, lexeme: l, value: token) = t
-  //     #(l, token)
-  //   }),
-  // )
+  Ok(tokens)
+}
 
+pub fn parse_(
+  tokens: List(nibblexer.Token(lexer.Token)),
+) -> Result(Expression, ParseError) {
   let parsed =
     nibble.run(tokens, expression_parser())
     |> result.map_error(fn(dead_ends) {
@@ -366,4 +379,9 @@ pub fn parse(source: String) -> Result(Expression, ParseError) {
   use expr <- result.try(parsed)
 
   Ok(expr)
+}
+
+pub fn parse(source: String) -> Result(Expression, ParseError) {
+  tokenize(source)
+  |> result.then(parse_)
 }

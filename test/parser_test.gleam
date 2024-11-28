@@ -1,5 +1,7 @@
 import gleam/io
+import gleam/list
 import gleeunit/should
+import nibble/lexer
 
 import parser as p
 
@@ -68,14 +70,61 @@ pub fn parse_map_test() {
 }
 
 pub fn parse_member_field_test() {
-  let map_src = "obj.field.inner"
+  let source = "obj.field.inner"
 
-  let assert Ok(parsed) = p.parse(map_src)
+  let assert Ok(parsed) = p.parse(source)
 
   let expected =
     p.Member(
       p.Member(p.Ident("obj"), p.Attribute("field")),
       p.Attribute("inner"),
+    )
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_nested_parenthesis_test() {
+  let source = "(((((inner)))))"
+
+  let assert Ok(parsed) = p.parse(source)
+
+  let expected = p.Ident("inner")
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_member_variants_test() {
+  let source = "arr[obj.field.inner]"
+
+  let assert Ok(parsed) = p.parse(source)
+
+  let expected =
+    p.Member(
+      p.Ident("arr"),
+      p.Index(p.Member(
+        p.Member(p.Ident("obj"), p.Attribute("field")),
+        p.Attribute("inner"),
+      )),
+    )
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_index_into_inline_list_test() {
+  let source = "[1, 2, 3][obj.field.inner]"
+
+  let assert Ok(parsed) = p.parse(source) |> io.debug
+
+  let expected =
+    p.Member(
+      p.List([p.Int(1), p.Int(2), p.Int(3)] |> list.map(p.Atom)),
+      p.Index(p.Member(
+        p.Member(p.Ident("obj"), p.Attribute("field")),
+        p.Attribute("inner"),
+      )),
     )
 
   parsed
