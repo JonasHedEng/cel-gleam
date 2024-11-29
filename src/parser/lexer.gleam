@@ -1,3 +1,6 @@
+// Heavily ~stolen from~ inspired by
+// https://github.com/DanielleMaywood/glexer/blob/main/src/glexer.gleam
+
 import gleam/bit_array
 import gleam/iterator.{type Iterator}
 import gleam/string
@@ -52,23 +55,7 @@ pub type Token {
   EndOfFile
 
   // Reserved
-  ReservedAs
-  ReservedBreak
-  ReservedConst
-  ReservedContinue
-  ReservedElse
-  ReservedFor
-  ReservedFunction
-  ReservedIf
-  ReservedImport
-  ReservedLet
-  ReservedLoop
-  ReservedPackage
-  ReservedNamespace
-  ReservedReturn
-  ReservedVar
-  ReservedVoid
-  ReservedWhile
+  Reserved(String)
 
   // Invalid code tokens
   UnterminatedString(String)
@@ -268,23 +255,23 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
         "true" -> Bool(True)
 
         // Reserveds 
-        "as" -> ReservedAs
-        "break" -> ReservedBreak
-        "const" -> ReservedConst
-        "continue" -> ReservedContinue
-        "else" -> ReservedElse
-        "for" -> ReservedFor
-        "function" -> ReservedFunction
-        "if" -> ReservedIf
-        "import" -> ReservedImport
-        "let" -> ReservedLet
-        "loop" -> ReservedLoop
-        "package" -> ReservedPackage
-        "namespace" -> ReservedNamespace
-        "return" -> ReservedReturn
-        "var" -> ReservedVar
-        "void" -> ReservedVoid
-        "while" -> ReservedWhile
+        "as" -> Reserved("as")
+        "break" -> Reserved("break")
+        "const" -> Reserved("const")
+        "continue" -> Reserved("continue")
+        "else" -> Reserved("else")
+        "for" -> Reserved("for")
+        "function" -> Reserved("function")
+        "if" -> Reserved("if")
+        "import" -> Reserved("import")
+        "let" -> Reserved("let")
+        "loop" -> Reserved("loop")
+        "package" -> Reserved("package")
+        "namespace" -> Reserved("namespace")
+        "return" -> Reserved("return")
+        "var" -> Reserved("var")
+        "void" -> Reserved("void")
+        "while" -> Reserved("while")
         ident -> Ident(ident)
       }
 

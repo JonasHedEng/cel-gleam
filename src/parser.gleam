@@ -126,6 +126,7 @@ pub type Expression {
 type Context {
   InList
   InMap
+  InTernary
   InIndexOp
   InSubExpr
 }
@@ -169,14 +170,8 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   }
 
   let member_index_start = fn(left, right) { IntermediateIndex(left, right) }
-  let member_index_end = fn(left) {
-    case left {
-      IntermediateIndex(expr, index) -> Member(expr, Index(index))
-      other -> other
-    }
-  }
 
-  pratt.expression(
+  use expr <- nibble.do(pratt.expression(
     one_of: [
       atom_expr_parser,
       ident_parser,
@@ -185,12 +180,14 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
       map_parser,
       pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
       pratt.prefix(8, nibble.token(lexer.Minus), unary_sub),
-      // member_index_end,
     ],
     and_then: [
       pratt.infix_left(9, nibble.token(lexer.Dot), member_attribute),
-      pratt.infix_right(9, nibble.token(lexer.LeftSquare), member_index_start),
-      pratt.postfix(9, nibble.token(lexer.RightSquare), member_index_end),
+      pratt.infix_right(
+        9,
+        nibble.in(nibble.token(lexer.LeftSquare), InIndexOp),
+        member_index_start,
+      ),
       pratt.infix_left(7, nibble.token(lexer.Star), mul),
       pratt.infix_left(7, nibble.token(lexer.Slash), div),
       pratt.infix_left(7, nibble.token(lexer.Percent), mod),
@@ -205,11 +202,23 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
       pratt.infix_left(5, nibble.token(lexer.In), in),
       pratt.infix_left(4, nibble.token(lexer.And), and),
       pratt.infix_left(3, nibble.token(lexer.Or), or),
-      pratt.infix_right(2, nibble.token(lexer.Colon), ternary_fork),
+      pratt.infix_right(
+        2,
+        nibble.in(nibble.token(lexer.Colon), InTernary),
+        ternary_fork,
+      ),
       pratt.infix_right(1, nibble.token(lexer.QuestionMark), ternary_cond),
     ],
     dropping: nibble.succeed(Nil),
-  )
+  ))
+
+  case expr {
+    IntermediateIndex(left, inner) -> {
+      use _ <- nibble.do(nibble.token(lexer.RightSquare))
+      nibble.return(Member(left, Index(inner)))
+    }
+    other -> nibble.return(other)
+  }
 }
 
 fn map_parser(_) -> Parser(Expression, lexer.Token, Context) {
