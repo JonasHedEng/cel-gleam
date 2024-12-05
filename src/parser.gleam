@@ -5,6 +5,7 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
+import nibble as n
 import nibble.{type Parser}
 import nibble/lexer as nibblexer
 import nibble/pratt
@@ -60,8 +61,6 @@ pub type Expression {
   Logical(Expression, LogicalOp, Expression)
   Unary(UnaryOp, Expression)
 
-  TernaryCond(Expression, Expression)
-  TernaryFork(Expression, Expression)
   Ternary(Expression, Expression, Expression)
 
   List(List(Expression))
@@ -125,7 +124,6 @@ pub type Expression {
 type Context {
   InList
   InMap
-  InTernary
   InSubExpr
 }
 
@@ -147,16 +145,6 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   let and = fn(lhs, rhs) { Logical(lhs, And, rhs) }
   let or = fn(lhs, rhs) { Logical(lhs, Or, rhs) }
 
-  let ternary_fork = fn(then, otherwise) { TernaryFork(then, otherwise) }
-  let ternary_cond = fn(left, right) {
-    case right {
-      TernaryFork(then, TernaryFork(fork_then, fork_otherwise)) ->
-        TernaryFork(Ternary(left, then, fork_then), fork_otherwise)
-      TernaryFork(then, otherwise) -> Ternary(left, then, otherwise)
-      other -> other
-    }
-  }
-
   let member_attribute = fn(left, right) {
     case right {
       Ident(s) -> Member(left, Attribute(s))
@@ -164,106 +152,108 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     }
   }
 
-  pratt.expression(
+  use expr <- n.do(pratt.expression(
     one_of: [base_expressions],
     and_then: [
-      pratt.infix_left(9, nibble.token(lexer.Dot), member_attribute),
-      pratt.infix_left(7, nibble.token(lexer.Star), mul),
-      pratt.infix_left(7, nibble.token(lexer.Slash), div),
-      pratt.infix_left(7, nibble.token(lexer.Percent), mod),
-      pratt.infix_left(6, nibble.token(lexer.Plus), add),
-      pratt.infix_left(6, nibble.token(lexer.Minus), sub),
-      pratt.infix_left(5, nibble.token(lexer.LessThanEq), lte),
-      pratt.infix_left(5, nibble.token(lexer.LessThan), lt),
-      pratt.infix_left(5, nibble.token(lexer.GreaterThanEq), gte),
-      pratt.infix_left(5, nibble.token(lexer.GreaterThan), gt),
-      pratt.infix_left(5, nibble.token(lexer.Equals), eq),
-      pratt.infix_left(5, nibble.token(lexer.NotEquals), neq),
-      pratt.infix_left(5, nibble.token(lexer.In), in),
-      pratt.infix_left(4, nibble.token(lexer.And), and),
-      pratt.infix_left(3, nibble.token(lexer.Or), or),
-      pratt.infix_right(
-        2,
-        nibble.in(nibble.token(lexer.Colon), InTernary),
-        ternary_fork,
-      ),
-      pratt.infix_right(1, nibble.token(lexer.QuestionMark), ternary_cond),
+      pratt.infix_left(9, n.token(lexer.Dot), member_attribute),
+      pratt.infix_left(7, n.token(lexer.Star), mul),
+      pratt.infix_left(7, n.token(lexer.Slash), div),
+      pratt.infix_left(7, n.token(lexer.Percent), mod),
+      pratt.infix_left(6, n.token(lexer.Plus), add),
+      pratt.infix_left(6, n.token(lexer.Minus), sub),
+      pratt.infix_left(5, n.token(lexer.LessThanEq), lte),
+      pratt.infix_left(5, n.token(lexer.LessThan), lt),
+      pratt.infix_left(5, n.token(lexer.GreaterThanEq), gte),
+      pratt.infix_left(5, n.token(lexer.GreaterThan), gt),
+      pratt.infix_left(5, n.token(lexer.Equals), eq),
+      pratt.infix_left(5, n.token(lexer.NotEquals), neq),
+      pratt.infix_left(5, n.token(lexer.In), in),
+      pratt.infix_left(4, n.token(lexer.And), and),
+      pratt.infix_left(3, n.token(lexer.Or), or),
     ],
-    dropping: nibble.succeed(Nil),
-  )
+    dropping: n.succeed(Nil),
+  ))
+
+  use ternary_op <- n.do(n.optional(n.token(lexer.QuestionMark)))
+
+  case ternary_op {
+    None -> n.return(expr)
+    Some(_) -> {
+      use then <- n.do(n.lazy(expression_parser))
+      use _ <- n.do(n.token(lexer.Colon))
+      use otherwise <- n.do(n.lazy(expression_parser))
+
+      n.return(Ternary(expr, then, otherwise))
+    }
+  }
 }
 
 fn base_expressions(conf) {
   let not = fn(expr) { Unary(Not, expr) }
   let unary_sub = fn(expr) { Unary(UnarySub, expr) }
 
-  use leaf <- nibble.do(
-    nibble.one_of([
+  use leaf <- n.do(
+    n.one_of([
       atom_expr_parser(conf),
       ident_parser(conf),
       parens_parser(conf),
       list_parser(conf),
       map_parser(conf),
-      pratt.prefix(8, nibble.token(lexer.ExclamationMark), not)(conf),
-      pratt.prefix(8, nibble.token(lexer.Minus), unary_sub)(conf),
+      pratt.prefix(8, n.token(lexer.ExclamationMark), not)(conf),
+      pratt.prefix(8, n.token(lexer.Minus), unary_sub)(conf),
     ]),
   )
 
-  use left_square_bracket <- nibble.do(
-    nibble.optional(nibble.token(lexer.LeftSquare)),
-  )
+  use index_op <- n.do(n.optional(n.token(lexer.LeftSquare)))
 
-  case left_square_bracket {
-    option.None -> nibble.return(leaf)
+  case index_op {
+    option.None -> n.return(leaf)
     option.Some(_) -> {
-      use index <- nibble.do(pratt.sub_expression(conf, 0))
-      use _ <- nibble.do(nibble.token(lexer.RightSquare))
+      use index <- n.do(pratt.sub_expression(conf, 0))
+      use _ <- n.do(n.token(lexer.RightSquare))
 
-      nibble.return(Member(leaf, Index(index)))
+      n.return(Member(leaf, Index(index)))
     }
   }
 }
 
 fn map_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- nibble.do(nibble.token(lexer.LeftCurly))
-  use fields <- nibble.do_in(
-    InMap,
-    nibble.sequence(field_parser(), nibble.token(lexer.Comma)),
-  )
-  use _ <- nibble.do(nibble.token(lexer.RightCurly))
+  use _ <- n.do(n.token(lexer.LeftCurly))
+  use fields <- n.do_in(InMap, n.sequence(field_parser(), n.token(lexer.Comma)))
+  use _ <- n.do(n.token(lexer.RightCurly))
 
-  nibble.return(Map(fields))
+  n.return(Map(fields))
 }
 
 fn field_parser() -> Parser(#(Atom, Expression), lexer.Token, Context) {
-  use key <- nibble.do(atom_parser(Nil))
-  use _ <- nibble.do(nibble.token(lexer.Colon))
-  use value <- nibble.do(nibble.lazy(expression_parser))
+  use key <- n.do(atom_parser(Nil))
+  use _ <- n.do(n.token(lexer.Colon))
+  use value <- n.do(n.lazy(expression_parser))
 
-  nibble.return(#(key, value))
+  n.return(#(key, value))
 }
 
 fn list_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- nibble.do(nibble.token(lexer.LeftSquare))
-  use exprs <- nibble.do_in(
+  use _ <- n.do(n.token(lexer.LeftSquare))
+  use exprs <- n.do_in(
     InList,
-    nibble.sequence(nibble.lazy(expression_parser), nibble.token(lexer.Comma)),
+    n.sequence(n.lazy(expression_parser), n.token(lexer.Comma)),
   )
-  use _ <- nibble.do(nibble.token(lexer.RightSquare))
+  use _ <- n.do(n.token(lexer.RightSquare))
 
-  nibble.return(List(exprs))
+  n.return(List(exprs))
 }
 
 fn parens_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- nibble.do(nibble.token(lexer.LeftParen))
-  use n <- nibble.do_in(InSubExpr, nibble.lazy(expression_parser))
-  use _ <- nibble.do(nibble.token(lexer.RightParen))
+  use _ <- n.do(n.token(lexer.LeftParen))
+  use n <- n.do_in(InSubExpr, n.lazy(expression_parser))
+  use _ <- n.do(n.token(lexer.RightParen))
 
-  nibble.return(n)
+  n.return(n)
 }
 
 fn ident_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use tok <- nibble.take_map("IDENT")
+  use tok <- n.take_map("IDENT")
 
   case tok {
     lexer.Ident(s) -> Ident(s) |> Some
@@ -272,13 +262,13 @@ fn ident_parser(_) -> Parser(Expression, lexer.Token, Context) {
 }
 
 fn atom_expr_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use atom <- nibble.do(atom_parser(Nil))
+  use atom <- n.do(atom_parser(Nil))
 
-  nibble.return(Atom(atom))
+  n.return(Atom(atom))
 }
 
 fn atom_parser(_) -> Parser(Atom, lexer.Token, Context) {
-  use tok <- nibble.take_map("STRING | INT | FLOAT | BOOL | NULL | IDENT")
+  use tok <- n.take_map("STRING | INT | FLOAT | BOOL | NULL | IDENT")
 
   case tok {
     lexer.String(s) -> String(s) |> Some
@@ -315,7 +305,7 @@ fn byte_offset_to_coords(
   })
 }
 
-fn lexer_to_nibble_token(
+fn lexer_to_n_token(
   rich_token: #(lexer.Token, lexer.Position),
   source: String,
   source_line_lengths: List(Int),
@@ -338,7 +328,7 @@ fn lexer_to_nibble_token(
 pub type ParseError {
   UnexpectedEndOfFile
   Unexpected(String, Int)
-  DeadEnd(List(#(nibble.Error(lexer.Token), Int)))
+  DeadEnd(List(#(n.Error(lexer.Token), Int)))
 }
 
 pub fn tokenize(
@@ -363,7 +353,7 @@ pub fn tokenize(
   let tokens =
     lexed
     |> list.map(fn(token) {
-      lexer_to_nibble_token(token, source, source_line_lengths)
+      lexer_to_n_token(token, source, source_line_lengths)
     })
 
   Ok(tokens)
@@ -373,11 +363,11 @@ pub fn parse_(
   tokens: List(nibblexer.Token(lexer.Token)),
 ) -> Result(Expression, ParseError) {
   let parsed =
-    nibble.run(tokens, expression_parser())
+    n.run(tokens, expression_parser())
     |> result.map_error(fn(dead_ends) {
       dead_ends
       |> list.map(fn(end) {
-        let nibble.DeadEnd(
+        let n.DeadEnd(
           pos: nibblexer.Span(_rs, cs, _re, _ce),
           problem: tok,
           context: _ctx,

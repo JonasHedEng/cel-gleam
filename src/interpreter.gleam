@@ -421,9 +421,6 @@ fn evaluate_expr(
     parser.Atom(parser.Float(f)) -> v.Float(f) |> Ok
     parser.Atom(parser.Null) -> v.Null |> Ok
     parser.Atom(parser.String(s)) -> v.String(s) |> Ok
-
-    parser.TernaryCond(_, _) -> IntermediateFound("Cond") |> Error
-    parser.TernaryFork(_, _) -> IntermediateFound("Fork") |> Error
   }
 }
 

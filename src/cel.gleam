@@ -1,5 +1,3 @@
-import gleam/io
-
 import parser
 
 pub fn main() {
@@ -9,8 +7,7 @@ pub fn main() {
   //   !b + 'fi\"sh') / 2"
 
   let source = "!(b + 5) || true && fish : b + 'str' ? 'abc' + 'def'"
-  let expr = parser.parse(source)
-  expr |> io.debug
+  let _expr = parser.parse(source)
 
   // parsed
   // |> expr_to_string

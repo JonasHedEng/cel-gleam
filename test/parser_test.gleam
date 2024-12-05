@@ -1,7 +1,5 @@
-import gleam/io
 import gleam/list
 import gleeunit/should
-import nibble/lexer
 
 import parser as p
 
@@ -21,9 +19,6 @@ pub fn parse_errors_test() {
 
   p.parse(source_a)
   |> should.be_error()
-  // let source_b = "a + 5U!"
-  // p.parse(source_b)
-  // |> should.be_error()
 }
 
 pub fn parse_ternary_test() {
@@ -116,7 +111,7 @@ pub fn parse_member_variants_test() {
 pub fn parse_index_into_inline_list_test() {
   let source = "[1, 2, 3][obj.field.inner]"
 
-  let assert Ok(parsed) = p.parse(source) |> io.debug
+  let assert Ok(parsed) = p.parse(source)
 
   let expected =
     p.Member(

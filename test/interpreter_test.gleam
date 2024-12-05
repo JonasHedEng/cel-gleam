@@ -1,5 +1,4 @@
 import gleam/dict
-import gleam/io
 import glearray
 import gleeunit/should
 
@@ -81,7 +80,7 @@ pub fn in_map_test() {
 
 pub fn member_field_test() {
   let source = "arr[obj.field.inner]"
-  let assert Ok(program) = interpreter.new(source) |> io.debug
+  let assert Ok(program) = interpreter.new(source)
 
   let obj =
     value.Map(
