@@ -424,7 +424,6 @@ fn evaluate_expr(
 
     parser.TernaryCond(_, _) -> IntermediateFound("Cond") |> Error
     parser.TernaryFork(_, _) -> IntermediateFound("Fork") |> Error
-    parser.IntermediateIndex(_, _) -> IntermediateFound("Index") |> Error
   }
 }
 

@@ -68,7 +68,6 @@ pub type Expression {
   Map(List(#(Atom, Expression)))
 
   Member(Expression, Member)
-  IntermediateIndex(Expression, Expression)
 
   // FunctionCall(Expression, Option(Expression), List(Expression))
   Atom(Atom)
@@ -127,7 +126,6 @@ type Context {
   InList
   InMap
   InTernary
-  InIndexOp
   InSubExpr
 }
 
@@ -149,9 +147,6 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   let and = fn(lhs, rhs) { Logical(lhs, And, rhs) }
   let or = fn(lhs, rhs) { Logical(lhs, Or, rhs) }
 
-  let not = fn(expr) { Unary(Not, expr) }
-  let unary_sub = fn(expr) { Unary(UnarySub, expr) }
-
   let ternary_fork = fn(then, otherwise) { TernaryFork(then, otherwise) }
   let ternary_cond = fn(left, right) {
     case right {
@@ -169,25 +164,10 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     }
   }
 
-  let member_index_start = fn(left, right) { IntermediateIndex(left, right) }
-
-  use expr <- nibble.do(pratt.expression(
-    one_of: [
-      atom_expr_parser,
-      ident_parser,
-      parens_parser,
-      list_parser,
-      map_parser,
-      pratt.prefix(8, nibble.token(lexer.ExclamationMark), not),
-      pratt.prefix(8, nibble.token(lexer.Minus), unary_sub),
-    ],
+  pratt.expression(
+    one_of: [base_expressions],
     and_then: [
       pratt.infix_left(9, nibble.token(lexer.Dot), member_attribute),
-      pratt.infix_right(
-        9,
-        nibble.in(nibble.token(lexer.LeftSquare), InIndexOp),
-        member_index_start,
-      ),
       pratt.infix_left(7, nibble.token(lexer.Star), mul),
       pratt.infix_left(7, nibble.token(lexer.Slash), div),
       pratt.infix_left(7, nibble.token(lexer.Percent), mod),
@@ -210,14 +190,37 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
       pratt.infix_right(1, nibble.token(lexer.QuestionMark), ternary_cond),
     ],
     dropping: nibble.succeed(Nil),
-  ))
+  )
+}
 
-  case expr {
-    IntermediateIndex(left, inner) -> {
+fn base_expressions(conf) {
+  let not = fn(expr) { Unary(Not, expr) }
+  let unary_sub = fn(expr) { Unary(UnarySub, expr) }
+
+  use leaf <- nibble.do(
+    nibble.one_of([
+      atom_expr_parser(conf),
+      ident_parser(conf),
+      parens_parser(conf),
+      list_parser(conf),
+      map_parser(conf),
+      pratt.prefix(8, nibble.token(lexer.ExclamationMark), not)(conf),
+      pratt.prefix(8, nibble.token(lexer.Minus), unary_sub)(conf),
+    ]),
+  )
+
+  use left_square_bracket <- nibble.do(
+    nibble.optional(nibble.token(lexer.LeftSquare)),
+  )
+
+  case left_square_bracket {
+    option.None -> nibble.return(leaf)
+    option.Some(_) -> {
+      use index <- nibble.do(pratt.sub_expression(conf, 0))
       use _ <- nibble.do(nibble.token(lexer.RightSquare))
-      nibble.return(Member(left, Index(inner)))
+
+      nibble.return(Member(leaf, Index(index)))
     }
-    other -> nibble.return(other)
   }
 }
 
