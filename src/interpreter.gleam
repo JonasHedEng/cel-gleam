@@ -415,6 +415,8 @@ fn evaluate_expr(
       values |> result.map(dict.from_list) |> result.map(v.Map)
     }
 
+    parser.FunctionCall(_ident, _this, _args) -> todo
+
     parser.Atom(parser.Int(n)) -> v.Int(n) |> Ok
     parser.Atom(parser.UInt(n)) -> v.UInt(n) |> Ok
     parser.Atom(parser.Bool(b)) -> v.Bool(b) |> Ok

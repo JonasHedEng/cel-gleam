@@ -68,7 +68,7 @@ pub type Expression {
 
   Member(Expression, Member)
 
-  // FunctionCall(Expression, Option(Expression), List(Expression))
+  FunctionCall(Expression, option.Option(Expression), List(Expression))
   Atom(Atom)
   Ident(String)
 }
@@ -174,6 +174,38 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     dropping: n.succeed(Nil),
   ))
 
+  // nibble.one_of([function_call_parser(expr), ternary_parser(expr)])
+  use func_call <- n.do(function_call_parser(expr))
+  use ternary <- n.do(ternary_parser(func_call))
+
+  n.return(ternary)
+}
+
+fn func_args_parser(
+  ident: Expression,
+  this: option.Option(Expression),
+) -> Parser(Expression, lexer.Token, Context) {
+  use args <- n.do(n.sequence(n.lazy(expression_parser), n.token(lexer.Comma)))
+  use _ <- n.do(n.token(lexer.RightParen))
+
+  n.return(FunctionCall(ident, this, args))
+}
+
+fn function_call_parser(
+  expr: Expression,
+) -> Parser(Expression, lexer.Token, Context) {
+  use lparen <- n.do(n.optional(n.token(lexer.LeftParen)))
+
+  case lparen, expr {
+    None, _ -> n.return(expr)
+    Some(_), Member(this, Attribute(ident)) ->
+      func_args_parser(Ident(ident), Some(this))
+    Some(_), Ident(_) -> func_args_parser(expr, None)
+    Some(_), _ -> n.return(expr)
+  }
+}
+
+fn ternary_parser(expr: Expression) -> Parser(Expression, lexer.Token, Context) {
   use ternary_op <- n.do(n.optional(n.token(lexer.QuestionMark)))
 
   case ternary_op {
@@ -188,7 +220,7 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
   }
 }
 
-fn base_expressions(conf) {
+fn base_expressions(conf) -> Parser(Expression, lexer.Token, Context) {
   let not = fn(expr) { Unary(Not, expr) }
   let unary_sub = fn(expr) { Unary(UnarySub, expr) }
 
@@ -253,6 +285,7 @@ fn parens_parser(_) -> Parser(Expression, lexer.Token, Context) {
 }
 
 fn ident_parser(_) -> Parser(Expression, lexer.Token, Context) {
+  use _ <- n.do(n.optional(n.token(lexer.Dot)))
   use tok <- n.take_map("IDENT")
 
   case tok {

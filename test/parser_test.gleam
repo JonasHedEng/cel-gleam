@@ -1,4 +1,6 @@
+import gleam/io
 import gleam/list
+import gleam/option
 import gleeunit/should
 
 import parser as p
@@ -120,6 +122,22 @@ pub fn parse_index_into_inline_list_test() {
         p.Member(p.Ident("obj"), p.Attribute("field")),
         p.Attribute("inner"),
       )),
+    )
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_function_call_test() {
+  let source = "[1, 2, 3].map(x, x * 2)"
+
+  let assert Ok(parsed) = p.parse(source)
+
+  let expected =
+    p.FunctionCall(
+      p.Ident("map"),
+      option.Some(p.List([p.Int(1), p.Int(2), p.Int(3)] |> list.map(p.Atom))),
+      [p.Ident("x"), p.Arithmetic(p.Ident("x"), p.Mul, p.Atom(p.Int(2)))],
     )
 
   parsed
