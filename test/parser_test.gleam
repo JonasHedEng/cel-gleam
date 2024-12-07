@@ -135,7 +135,7 @@ pub fn parse_function_call_test() {
 
   let expected =
     p.FunctionCall(
-      p.Ident("map"),
+      "map",
       option.Some(p.List([p.Int(1), p.Int(2), p.Int(3)] |> list.map(p.Atom))),
       [p.Ident("x"), p.Arithmetic(p.Ident("x"), p.Mul, p.Atom(p.Int(2)))],
     )

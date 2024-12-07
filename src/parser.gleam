@@ -1,6 +1,5 @@
 import gleam/float
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -68,7 +67,7 @@ pub type Expression {
 
   Member(Expression, Member)
 
-  FunctionCall(Expression, option.Option(Expression), List(Expression))
+  FunctionCall(String, option.Option(Expression), List(Expression))
   Atom(Atom)
   Ident(String)
 }
@@ -174,15 +173,14 @@ fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
     dropping: n.succeed(Nil),
   ))
 
-  // nibble.one_of([function_call_parser(expr), ternary_parser(expr)])
-  use func_call <- n.do(function_call_parser(expr))
-  use ternary <- n.do(ternary_parser(func_call))
+  use try_func_call <- n.do(function_call_parser(expr))
+  use try_ternary <- n.do(ternary_parser(try_func_call))
 
-  n.return(ternary)
+  n.return(try_ternary)
 }
 
 fn func_args_parser(
-  ident: Expression,
+  ident: String,
   this: option.Option(Expression),
 ) -> Parser(Expression, lexer.Token, Context) {
   use args <- n.do(n.sequence(n.lazy(expression_parser), n.token(lexer.Comma)))
@@ -196,12 +194,12 @@ fn function_call_parser(
 ) -> Parser(Expression, lexer.Token, Context) {
   use lparen <- n.do(n.optional(n.token(lexer.LeftParen)))
 
-  case lparen, expr {
-    None, _ -> n.return(expr)
-    Some(_), Member(this, Attribute(ident)) ->
-      func_args_parser(Ident(ident), Some(this))
-    Some(_), Ident(_) -> func_args_parser(expr, None)
-    Some(_), _ -> n.return(expr)
+  case expr, lparen {
+    _, None -> n.return(expr)
+    Member(this, Attribute(ident)), Some(_) ->
+      func_args_parser(ident, Some(this))
+    Ident(name), Some(_) -> func_args_parser(name, None)
+    _, Some(_) -> n.return(expr)
   }
 }
 

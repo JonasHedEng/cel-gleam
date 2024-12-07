@@ -1,117 +1,80 @@
-import gleam/dict.{type Dict}
+import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
+
 import glearray
 
-import interpreter/value.{type Type, type Value}
+import interpreter/context as ctx
+import interpreter/errors.{type ExecutionError}
+import interpreter/value.{type Value}
 import interpreter/value as v
-import parser
+import parser.{type Expression}
 
-pub type FunctionContext {
-  FunctionContext(
-    name: String,
-    this: Option(Value),
-    ptx: Context,
-    args: List(parser.Expression),
-    arg_idx: Int,
-  )
-}
+fn filter_impl(
+  ctx ctx: ctx.Context,
+  ident ident: String,
+  items items: List(Value),
+  filtered filtered: List(Value),
+  expr expr: Expression,
+) {
+  case items {
+    [] -> Ok(list.reverse(filtered))
+    [head, ..tail] -> {
+      let inner_ctx = ctx.new_inner(ctx) |> ctx.insert_variable(ident, head)
+      use cond <- result.try(evaluate_expr(expr, inner_ctx))
 
-pub type Callable {
-  Callable(call: fn(FunctionContext) -> Value)
-}
-
-pub type Context {
-  Root(variables: Dict(String, Value), functions: Dict(String, Callable))
-  Child(variables: Dict(String, Value), parent: Context)
-}
-
-pub fn empty() -> Context {
-  Root(variables: dict.new(), functions: dict.new())
-}
-
-pub fn insert_variable(ctx: Context, name: String, value: Value) -> Context {
-  case ctx {
-    Root(variables, functions) -> {
-      let new_vars = dict.insert(variables, name, value)
-      Root(variables: new_vars, functions:)
-    }
-    Child(variables, parent) -> {
-      let new_vars = dict.insert(variables, name, value)
-      Child(variables: new_vars, parent:)
-    }
-  }
-}
-
-pub fn resolve_variable(
-  ctx: Context,
-  name: String,
-) -> Result(Value, ExecutionError) {
-  case ctx {
-    Root(variables, _functions) -> {
-      dict.get(variables, name)
-      |> result.replace_error(UnknownIdentifier(name))
-    }
-    Child(variables, parent) -> {
-      case dict.get(variables, name) {
-        Error(_) -> resolve_variable(parent, name)
-        Ok(val) -> Ok(val)
-      }
-    }
-  }
-}
-
-pub fn resolve_member(
-  ctx: Context,
-  parent: value.Value,
-  member: parser.Member,
-) -> Result(Value, ExecutionError) {
-  case member {
-    parser.Attribute(attr) -> {
-      case parent {
-        v.Map(m) ->
-          dict.get(m, v.KeyString(attr))
-          |> result.replace_error(NoSuchKey(member))
-        other ->
-          Error(InvalidMemberParent(parent_type: v.to_type(other), member:))
-      }
-    }
-    parser.Index(i) -> {
-      use index <- result.try(evaluate_expr(i, ctx))
-
-      case parent, index {
-        v.List(l), v.Int(idx) -> {
-          glearray.get(l, idx)
-          |> result.replace_error(IndexOutOfBounds(
-            size: glearray.length(l),
-            index: idx,
+      use filtered <- result.try(case cond {
+        v.Bool(True) -> Ok([head, ..filtered])
+        v.Bool(False) -> Ok(filtered)
+        _ ->
+          Error(errors.UnexpectedType(
+            expected: v.BoolT,
+            got: v.to_type(cond),
+            in_context: "filter condition",
           ))
-        }
-        v.Map(m), v.String(attr) -> {
-          dict.get(m, v.KeyString(attr))
-          |> result.replace_error(UnknownIdentifier(attr))
-        }
-        v.Map(m), v.Int(attr) -> {
-          dict.get(m, v.KeyInt(attr))
-          |> result.replace_error(NoSuchKey(member))
-        }
-        v.Map(m), v.UInt(attr) -> {
-          dict.get(m, v.KeyUInt(attr))
-          |> result.replace_error(NoSuchKey(member))
-        }
-        other, _ ->
-          Error(InvalidMemberParent(parent_type: v.to_type(other), member:))
-      }
+      })
+
+      filter_impl(ctx, ident, tail, filtered, expr)
     }
+  }
+}
+
+pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+  let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
+
+  use #(ident, expr) <- result.try(case args {
+    [parser.Ident(ident), expr] -> Ok(#(ident, expr))
+    _ -> Error(errors.InvalidFunctionArgs(function: name))
+  })
+
+  case this {
+    Some(v.List(items)) -> {
+      filter_impl(
+        ctx: ctx,
+        ident: ident,
+        items: glearray.to_list(items),
+        filtered: [],
+        expr: expr,
+      )
+      |> result.map(glearray.from_list)
+      |> result.map(v.List)
+    }
+    Some(other) ->
+      Error(errors.UnexpectedType(
+        expected: v.ListT,
+        got: v.to_type(other),
+        in_context: "filter target",
+      ))
+    None -> Error(errors.FunctionExpectedThis(function: name))
   }
 }
 
 pub opaque type Program {
-  Program(expr: parser.Expression)
+  Program(expr: Expression)
 }
 
 pub fn new(with_source source: String) -> Result(Program, parser.ParseError) {
@@ -120,26 +83,11 @@ pub fn new(with_source source: String) -> Result(Program, parser.ParseError) {
   parsed |> Program |> Ok
 }
 
-pub type ExecutionError {
-  UnknownIdentifier(String)
-  NoSuchKey(parser.Member)
-  IndexOutOfBounds(size: Int, index: Int)
-  InvalidMemberParent(parent_type: Type, member: parser.Member)
-
-  UnsupportedBinop(Type, String, Type)
-  UnsupportedUnary(String, Type)
-  InvalidAtomAsKey(parser.Atom)
-  InvalidValueAsKey(Value)
-  UnsupportedTernaryCondition(Type)
-  ArithmeticError
-  IntermediateFound(String)
-}
-
 fn evaluate_arith(
-  lhs: parser.Expression,
+  lhs: Expression,
   op: parser.ArithmeticOp,
-  rhs: parser.Expression,
-  ctx: Context,
+  rhs: Expression,
+  ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
@@ -162,7 +110,7 @@ fn evaluate_arith(
     v.Float(l), parser.Mod, v.Float(r) ->
       float.modulo(l, r)
       |> result.map(v.Float)
-      |> result.map_error(fn(_) { ArithmeticError })
+      |> result.map_error(fn(_) { errors.ArithmeticError })
     v.Float(l), parser.Mul, v.Float(r) -> v.Float(l *. r) |> Ok
     v.Float(l), parser.Sub, v.Float(r) -> v.Float(l -. r) |> Ok
 
@@ -189,38 +137,38 @@ fn evaluate_arith(
     v.Int(l), parser.Mod, v.Float(r) | v.UInt(l), parser.Mod, v.Float(r) ->
       float.modulo(int.to_float(l), r)
       |> result.map(v.Float)
-      |> result.map_error(fn(_) { ArithmeticError })
+      |> result.map_error(fn(_) { errors.ArithmeticError })
     v.Float(l), parser.Mod, v.Int(r) | v.Float(l), parser.Mod, v.UInt(r) ->
       float.modulo(l, int.to_float(r))
       |> result.map(v.Float)
-      |> result.map_error(fn(_) { ArithmeticError })
+      |> result.map_error(fn(_) { errors.ArithmeticError })
 
     v.String(l), parser.Add, v.String(r) -> v.String(l <> r) |> Ok
     v.List(l), parser.Add, v.List(r) ->
       v.List(
-        list.flatten([l |> glearray.to_list, r |> glearray.to_list])
+        list.flatten([glearray.to_list(l), glearray.to_list(r)])
         |> glearray.from_list,
       )
       |> Ok
 
     l, parser.Add, r ->
-      UnsupportedBinop(v.to_type(l), "+", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "+", v.to_type(r)) |> Error
     l, parser.Div, r ->
-      UnsupportedBinop(v.to_type(l), "/", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "/", v.to_type(r)) |> Error
     l, parser.Mod, r ->
-      UnsupportedBinop(v.to_type(l), "%", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "%", v.to_type(r)) |> Error
     l, parser.Mul, r ->
-      UnsupportedBinop(v.to_type(l), "*", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "*", v.to_type(r)) |> Error
     l, parser.Sub, r ->
-      UnsupportedBinop(v.to_type(l), "-", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "-", v.to_type(r)) |> Error
   }
 }
 
 fn evaluate_logical(
-  lhs: parser.Expression,
+  lhs: Expression,
   op: parser.LogicalOp,
-  rhs: parser.Expression,
-  ctx: Context,
+  rhs: Expression,
+  ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
@@ -230,17 +178,17 @@ fn evaluate_logical(
     v.Bool(l), parser.Or, v.Bool(r) -> v.Bool(l || r) |> Ok
 
     l, parser.And, r ->
-      UnsupportedBinop(v.to_type(l), "&&", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "&&", v.to_type(r)) |> Error
     l, parser.Or, r ->
-      UnsupportedBinop(v.to_type(l), "||", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "||", v.to_type(r)) |> Error
   }
 }
 
 fn evaluate_relation(
-  lhs: parser.Expression,
+  lhs: Expression,
   op: parser.RelationOp,
-  rhs: parser.Expression,
-  ctx: Context,
+  rhs: Expression,
+  ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
@@ -323,44 +271,45 @@ fn evaluate_relation(
 
     l, parser.In, v.Map(r) -> {
       let l_as_key =
-        v.key_from_value(l) |> result.map_error(fn(_) { InvalidValueAsKey(l) })
+        v.key_from_value(l)
+        |> result.map_error(fn(_) { errors.InvalidValueAsKey(l) })
       use l_key <- result.try(l_as_key)
 
       v.Bool(dict.has_key(r, l_key)) |> Ok
     }
 
     l, parser.LessThanEq, r ->
-      UnsupportedBinop(v.to_type(l), "<=", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "<=", v.to_type(r)) |> Error
     l, parser.LessThan, r ->
-      UnsupportedBinop(v.to_type(l), "<", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "<", v.to_type(r)) |> Error
     l, parser.GreaterThanEq, r ->
-      UnsupportedBinop(v.to_type(l), ">=", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), ">=", v.to_type(r)) |> Error
     l, parser.GreaterThan, r ->
-      UnsupportedBinop(v.to_type(l), ">", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), ">", v.to_type(r)) |> Error
     l, parser.In, r ->
-      UnsupportedBinop(v.to_type(l), "in", v.to_type(r)) |> Error
+      errors.UnsupportedBinop(v.to_type(l), "in", v.to_type(r)) |> Error
   }
 }
 
 fn evaluate_ternary(
-  cond: parser.Expression,
-  then: parser.Expression,
-  otherwise: parser.Expression,
-  ctx: Context,
+  cond: Expression,
+  then: Expression,
+  otherwise: Expression,
+  ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use cond_val <- result.try(evaluate_expr(cond, ctx))
 
   case cond_val {
     v.Bool(True) -> evaluate_expr(then, ctx)
     v.Bool(False) -> evaluate_expr(otherwise, ctx)
-    _ -> Error(UnsupportedTernaryCondition(v.to_type(cond_val)))
+    _ -> Error(errors.UnsupportedTernaryCondition(v.to_type(cond_val)))
   }
 }
 
 fn evaluate_unary(
   op: parser.UnaryOp,
-  expr: parser.Expression,
-  ctx: Context,
+  expr: Expression,
+  ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use val <- result.try(evaluate_expr(expr, ctx))
 
@@ -371,20 +320,21 @@ fn evaluate_unary(
     parser.UnarySub, v.UInt(n) -> v.UInt(-n) |> Ok
     parser.UnarySub, v.Float(n) -> v.Float(0.0 -. n) |> Ok
 
-    parser.UnarySub, _ -> UnsupportedUnary("-", v.to_type(val)) |> Error
-    parser.Not, _ -> UnsupportedUnary("!", v.to_type(val)) |> Error
+    parser.UnarySub, _ -> errors.UnsupportedUnary("-", v.to_type(val)) |> Error
+    parser.Not, _ -> errors.UnsupportedUnary("!", v.to_type(val)) |> Error
   }
 }
 
 fn evaluate_expr(
-  expr: parser.Expression,
-  ctx: Context,
+  expr: Expression,
+  ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   case expr {
     parser.Arithmetic(lhs, op, rhs) -> evaluate_arith(lhs, op, rhs, ctx)
     parser.Logical(lhs, op, rhs) -> evaluate_logical(lhs, op, rhs, ctx)
     parser.Relation(lhs, op, rhs) -> evaluate_relation(lhs, op, rhs, ctx)
-    parser.Ident(ident) -> ctx |> resolve_variable(ident)
+    parser.Ident(ident) ->
+      ctx.resolve_variable(ctx, ident) |> result.map_error(errors.ContextError)
     parser.Ternary(cond, then, otherwise) ->
       evaluate_ternary(cond, then, otherwise, ctx)
     parser.Unary(op, unary_expr) -> evaluate_unary(op, unary_expr, ctx)
@@ -395,27 +345,42 @@ fn evaluate_expr(
     }
 
     parser.List(exprs) -> {
-      let values = list.try_map(exprs, fn(l) { evaluate_expr(l, ctx) })
-      values |> result.map(glearray.from_list) |> result.map(v.List)
+      list.try_map(exprs, fn(l) { evaluate_expr(l, ctx) })
+      |> result.map(glearray.from_list)
+      |> result.map(v.List)
     }
     parser.Map(fields) -> {
-      let values =
-        list.try_map(fields, fn(field) {
-          let #(field_key, field_value) = field
+      list.try_map(fields, fn(field) {
+        let #(field_key, field_value) = field
 
-          use key <- result.try(
-            v.key_from_atom(field_key)
-            |> result.map_error(fn(_) { InvalidAtomAsKey(field_key) }),
-          )
-          use val <- result.try(evaluate_expr(field_value, ctx))
+        use key <- result.try(
+          v.key_from_atom(field_key)
+          |> result.map_error(fn(_) { errors.InvalidAtomAsKey(field_key) }),
+        )
+        use val <- result.try(evaluate_expr(field_value, ctx))
 
-          Ok(#(key, val))
-        })
-
-      values |> result.map(dict.from_list) |> result.map(v.Map)
+        Ok(#(key, val))
+      })
+      |> result.map(dict.from_list)
+      |> result.map(v.Map)
     }
 
-    parser.FunctionCall(_ident, _this, _args) -> todo
+    parser.FunctionCall(ident, this, args) -> {
+      use target <- result.try(case this {
+        Some(expr) -> {
+          evaluate_expr(expr, ctx) |> result.map(Some)
+        }
+        None -> Ok(None)
+      })
+
+      let ftx = ctx.FunctionContext(ident, target, ctx, args)
+      use function <- result.try(
+        ctx.resolve_function(ctx, ident)
+        |> result.map_error(errors.ContextError),
+      )
+
+      function.call(ftx)
+    }
 
     parser.Atom(parser.Int(n)) -> v.Int(n) |> Ok
     parser.Atom(parser.UInt(n)) -> v.UInt(n) |> Ok
@@ -426,6 +391,62 @@ fn evaluate_expr(
   }
 }
 
-pub fn execute(program: Program, ctx: Context) -> Result(Value, ExecutionError) {
+pub fn resolve_member(
+  ctx: ctx.Context,
+  parent: value.Value,
+  member: parser.Member,
+) -> Result(Value, ExecutionError) {
+  case member {
+    parser.Attribute(attr) -> {
+      case parent {
+        v.Map(m) ->
+          dict.get(m, v.KeyString(attr))
+          |> result.replace_error(errors.NoSuchKey(member))
+        other ->
+          Error(errors.InvalidMemberParent(
+            parent_type: v.to_type(other),
+            member:,
+          ))
+      }
+      |> result.map_error(errors.ContextError)
+    }
+    parser.Index(i) -> {
+      use index <- result.try(evaluate_expr(i, ctx))
+
+      case parent, index {
+        v.List(l), v.Int(idx) -> {
+          glearray.get(l, idx)
+          |> result.replace_error(errors.IndexOutOfBounds(
+            size: glearray.length(l),
+            index: idx,
+          ))
+        }
+        v.Map(m), v.String(attr) -> {
+          dict.get(m, v.KeyString(attr))
+          |> result.replace_error(errors.UnknownIdentifier(attr))
+        }
+        v.Map(m), v.Int(attr) -> {
+          dict.get(m, v.KeyInt(attr))
+          |> result.replace_error(errors.NoSuchKey(member))
+        }
+        v.Map(m), v.UInt(attr) -> {
+          dict.get(m, v.KeyUInt(attr))
+          |> result.replace_error(errors.NoSuchKey(member))
+        }
+        other, _ ->
+          Error(errors.InvalidMemberParent(
+            parent_type: v.to_type(other),
+            member:,
+          ))
+      }
+      |> result.map_error(errors.ContextError)
+    }
+  }
+}
+
+pub fn execute(
+  program: Program,
+  ctx: ctx.Context,
+) -> Result(Value, ExecutionError) {
   evaluate_expr(program.expr, ctx)
 }

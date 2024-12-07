@@ -1,16 +1,17 @@
 import gleam/dict
+import gleam/io
 import glearray
 import gleeunit/should
 
 import interpreter
+import interpreter/context
 import interpreter/value
 
 pub fn resolve_and_compute_test() {
   let source = "a + 5u"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx =
-    interpreter.empty() |> interpreter.insert_variable("a", value.UInt(2))
+  let ctx = context.empty() |> context.insert_variable("a", value.UInt(2))
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.UInt(7)))
@@ -20,8 +21,7 @@ pub fn list_test() {
   let source = "[a + 5u, a - 1u]"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx =
-    interpreter.empty() |> interpreter.insert_variable("a", value.UInt(2))
+  let ctx = context.empty() |> context.insert_variable("a", value.UInt(2))
 
   let expected =
     [value.UInt(7), value.UInt(1)]
@@ -36,8 +36,7 @@ pub fn ternary_test() {
   let source = "a == 2 ? 3 : 5"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx =
-    interpreter.empty() |> interpreter.insert_variable("a", value.UInt(2))
+  let ctx = context.empty() |> context.insert_variable("a", value.UInt(2))
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.Int(3)))
@@ -48,9 +47,9 @@ pub fn nested_ternary_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let ctx =
-    interpreter.empty()
-    |> interpreter.insert_variable("a", value.UInt(1))
-    |> interpreter.insert_variable("b", value.UInt(3))
+    context.empty()
+    |> context.insert_variable("a", value.UInt(1))
+    |> context.insert_variable("b", value.UInt(3))
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.Int(4)))
@@ -71,8 +70,8 @@ pub fn in_map_test() {
     )
 
   let ctx =
-    interpreter.empty()
-    |> interpreter.insert_variable("dict", map)
+    context.empty()
+    |> context.insert_variable("dict", map)
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.Bool(True)))
@@ -102,10 +101,25 @@ pub fn member_field_test() {
     |> value.List
 
   let ctx =
-    interpreter.empty()
-    |> interpreter.insert_variable("obj", obj)
-    |> interpreter.insert_variable("arr", arr)
+    context.empty()
+    |> context.insert_variable("obj", obj)
+    |> context.insert_variable("arr", arr)
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.String("b")))
+}
+
+pub fn parse_function_call_ternary_test() {
+  let source = "false ? 'hmm' : [1, 2, 3, 4].filter(x, x % 2 == 0)"
+
+  let assert Ok(program) = interpreter.new(source) |> io.debug
+
+  let ctx =
+    context.empty()
+    |> context.insert_function("filter", context.Callable(interpreter.filter))
+
+  interpreter.execute(program, ctx)
+  |> should.equal(
+    Ok(value.List(glearray.from_list([value.Int(2), value.Int(4)]))),
+  )
 }
