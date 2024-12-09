@@ -135,3 +135,47 @@ pub fn expr_key_map_test() {
     )),
   )
 }
+
+pub fn map_test() {
+  let source = "[1, 2, 3, 4].map(x, [x, x])"
+
+  let assert Ok(program) = interpreter.new(source)
+  let ctx = interpreter.default_context()
+
+  interpreter.execute(program, ctx)
+  |> should.equal(
+    Ok(
+      value.List([
+        value.List([value.Int(1), value.Int(1)]),
+        value.List([value.Int(2), value.Int(2)]),
+        value.List([value.Int(3), value.Int(3)]),
+        value.List([value.Int(4), value.Int(4)]),
+      ]),
+    ),
+  )
+}
+
+pub fn all_test() {
+  let source = "[1, 2, 3, 4].all(x, x < 5)"
+
+  let assert Ok(program) = interpreter.new(source)
+  let ctx = interpreter.default_context()
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.Bool(True)))
+}
+
+pub fn size_test() {
+  let source = "4 == size(list) ? size(list) + 2 : 0"
+
+  let assert Ok(program) = interpreter.new(source)
+  let ctx =
+    interpreter.default_context()
+    |> context.insert_variable(
+      "list",
+      value.List([value.Int(1), value.Int(2), value.Int(3), value.Int(4)]),
+    )
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.Int(6)))
+}

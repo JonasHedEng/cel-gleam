@@ -13,7 +13,7 @@ pub type ExecutionError {
 
   UnsupportedBinop(Type, String, Type)
   UnsupportedUnary(String, Type)
-  UnexpectedType(expected: Type, got: Type, in_context: String)
+  UnexpectedType(expected: List(Type), got: Type, in_context: String)
   InvalidValueAsKey(Value)
   IndexOutOfBounds(size: Int, index: Int)
   UnsupportedTernaryCondition(Type)
