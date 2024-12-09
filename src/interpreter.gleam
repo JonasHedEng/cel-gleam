@@ -12,14 +12,14 @@ import interpreter/context as ctx
 import interpreter/errors.{type ExecutionError}
 import interpreter/value.{type Value}
 import interpreter/value as v
-import parser.{type Expression}
+import parser as p
 
 fn filter_impl(
   ctx ctx: ctx.Context,
   ident ident: String,
   items items: List(Value),
   filtered filtered: List(Value),
-  expr expr: Expression,
+  expr expr: p.Expression,
 ) {
   case items {
     [] -> Ok(list.reverse(filtered))
@@ -47,7 +47,7 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
 
   use #(ident, expr) <- result.try(case args {
-    [parser.Ident(ident), expr] -> Ok(#(ident, expr))
+    [p.Ident(ident), expr] -> Ok(#(ident, expr))
     _ -> Error(errors.InvalidFunctionArgs(function: name))
   })
 
@@ -74,192 +74,195 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 }
 
 pub opaque type Program {
-  Program(expr: Expression)
+  Program(expr: p.Expression)
 }
 
-pub fn new(with_source source: String) -> Result(Program, parser.ParseError) {
-  use parsed <- result.try(parser.parse(source))
+pub fn new(with_source source: String) -> Result(Program, p.Error) {
+  use parsed <- result.try(p.parse(source))
 
   parsed |> Program |> Ok
 }
 
-fn evaluate_arith(
-  lhs: Expression,
-  op: parser.ArithmeticOp,
-  rhs: Expression,
+fn evaluate_binop(
+  lhs: p.Expression,
+  op: p.BinaryOp,
+  rhs: p.Expression,
+  ctx: ctx.Context,
+) {
+  case op {
+    p.Arithmetic(op) -> evaluate_arithmetic(lhs, op, rhs, ctx)
+    p.Relation(op) -> evaluate_relation(lhs, op, rhs, ctx)
+    p.Logical(op) -> evaluate_logical(lhs, op, rhs, ctx)
+  }
+}
+
+fn evaluate_arithmetic(
+  lhs: p.Expression,
+  op: p.Arithmetic,
+  rhs: p.Expression,
   ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
   case lhs_value, op, rhs_value {
-    v.Int(l), parser.Add, v.Int(r) -> v.Int(l + r) |> Ok
-    v.Int(l), parser.Div, v.Int(r) -> v.Int(l / r) |> Ok
-    v.Int(l), parser.Mod, v.Int(r) -> v.Int(l % r) |> Ok
-    v.Int(l), parser.Mul, v.Int(r) -> v.Int(l * r) |> Ok
-    v.Int(l), parser.Sub, v.Int(r) -> v.Int(l - r) |> Ok
+    v.Int(l), p.Add, v.Int(r) -> v.Int(l + r) |> Ok
+    v.Int(l), p.Div, v.Int(r) -> v.Int(l / r) |> Ok
+    v.Int(l), p.Mod, v.Int(r) -> v.Int(l % r) |> Ok
+    v.Int(l), p.Mul, v.Int(r) -> v.Int(l * r) |> Ok
+    v.Int(l), p.Sub, v.Int(r) -> v.Int(l - r) |> Ok
 
-    v.UInt(l), parser.Add, v.UInt(r) -> v.UInt(l + r) |> Ok
-    v.UInt(l), parser.Div, v.UInt(r) -> v.UInt(l / r) |> Ok
-    v.UInt(l), parser.Mod, v.UInt(r) -> v.UInt(l % r) |> Ok
-    v.UInt(l), parser.Mul, v.UInt(r) -> v.UInt(l * r) |> Ok
-    v.UInt(l), parser.Sub, v.UInt(r) -> v.UInt(l - r) |> Ok
+    v.UInt(l), p.Add, v.UInt(r) -> v.UInt(l + r) |> Ok
+    v.UInt(l), p.Div, v.UInt(r) -> v.UInt(l / r) |> Ok
+    v.UInt(l), p.Mod, v.UInt(r) -> v.UInt(l % r) |> Ok
+    v.UInt(l), p.Mul, v.UInt(r) -> v.UInt(l * r) |> Ok
+    v.UInt(l), p.Sub, v.UInt(r) -> v.UInt(l - r) |> Ok
 
-    v.Float(l), parser.Add, v.Float(r) -> v.Float(l +. r) |> Ok
-    v.Float(l), parser.Div, v.Float(r) -> v.Float(l /. r) |> Ok
-    v.Float(l), parser.Mod, v.Float(r) ->
+    v.Float(l), p.Add, v.Float(r) -> v.Float(l +. r) |> Ok
+    v.Float(l), p.Div, v.Float(r) -> v.Float(l /. r) |> Ok
+    v.Float(l), p.Mod, v.Float(r) ->
       float.modulo(l, r)
       |> result.map(v.Float)
       |> result.map_error(fn(_) { errors.ArithmeticError })
-    v.Float(l), parser.Mul, v.Float(r) -> v.Float(l *. r) |> Ok
-    v.Float(l), parser.Sub, v.Float(r) -> v.Float(l -. r) |> Ok
+    v.Float(l), p.Mul, v.Float(r) -> v.Float(l *. r) |> Ok
+    v.Float(l), p.Sub, v.Float(r) -> v.Float(l -. r) |> Ok
 
-    v.Int(l), parser.Add, v.Float(r) | v.UInt(l), parser.Add, v.Float(r) ->
+    v.Int(l), p.Add, v.Float(r) | v.UInt(l), p.Add, v.Float(r) ->
       v.Float(int.to_float(l) +. r) |> Ok
-    v.Float(l), parser.Add, v.Int(r) | v.Float(l), parser.Add, v.UInt(r) ->
+    v.Float(l), p.Add, v.Int(r) | v.Float(l), p.Add, v.UInt(r) ->
       v.Float(l +. int.to_float(r)) |> Ok
 
-    v.Int(l), parser.Sub, v.Float(r) | v.UInt(l), parser.Sub, v.Float(r) ->
+    v.Int(l), p.Sub, v.Float(r) | v.UInt(l), p.Sub, v.Float(r) ->
       v.Float(int.to_float(l) -. r) |> Ok
-    v.Float(l), parser.Sub, v.Int(r) | v.Float(l), parser.Sub, v.UInt(r) ->
+    v.Float(l), p.Sub, v.Int(r) | v.Float(l), p.Sub, v.UInt(r) ->
       v.Float(l -. int.to_float(r)) |> Ok
 
-    v.Int(l), parser.Mul, v.Float(r) | v.UInt(l), parser.Mul, v.Float(r) ->
+    v.Int(l), p.Mul, v.Float(r) | v.UInt(l), p.Mul, v.Float(r) ->
       v.Float(int.to_float(l) *. r) |> Ok
-    v.Float(l), parser.Mul, v.Int(r) | v.Float(l), parser.Mul, v.UInt(r) ->
+    v.Float(l), p.Mul, v.Int(r) | v.Float(l), p.Mul, v.UInt(r) ->
       v.Float(l *. int.to_float(r)) |> Ok
 
-    v.Int(l), parser.Div, v.Float(r) | v.UInt(l), parser.Div, v.Float(r) ->
+    v.Int(l), p.Div, v.Float(r) | v.UInt(l), p.Div, v.Float(r) ->
       v.Float(int.to_float(l) /. r) |> Ok
-    v.Float(l), parser.Div, v.Int(r) | v.Float(l), parser.Div, v.UInt(r) ->
+    v.Float(l), p.Div, v.Int(r) | v.Float(l), p.Div, v.UInt(r) ->
       v.Float(l /. int.to_float(r)) |> Ok
 
-    v.Int(l), parser.Mod, v.Float(r) | v.UInt(l), parser.Mod, v.Float(r) ->
+    v.Int(l), p.Mod, v.Float(r) | v.UInt(l), p.Mod, v.Float(r) ->
       float.modulo(int.to_float(l), r)
       |> result.map(v.Float)
       |> result.map_error(fn(_) { errors.ArithmeticError })
-    v.Float(l), parser.Mod, v.Int(r) | v.Float(l), parser.Mod, v.UInt(r) ->
+    v.Float(l), p.Mod, v.Int(r) | v.Float(l), p.Mod, v.UInt(r) ->
       float.modulo(l, int.to_float(r))
       |> result.map(v.Float)
       |> result.map_error(fn(_) { errors.ArithmeticError })
 
-    v.String(l), parser.Add, v.String(r) -> v.String(l <> r) |> Ok
-    v.List(l), parser.Add, v.List(r) ->
+    v.String(l), p.Add, v.String(r) -> v.String(l <> r) |> Ok
+    v.List(l), p.Add, v.List(r) ->
       v.List(
         list.flatten([glearray.to_list(l), glearray.to_list(r)])
         |> glearray.from_list,
       )
       |> Ok
 
-    l, parser.Add, r ->
+    l, p.Add, r ->
       errors.UnsupportedBinop(v.to_type(l), "+", v.to_type(r)) |> Error
-    l, parser.Div, r ->
+    l, p.Div, r ->
       errors.UnsupportedBinop(v.to_type(l), "/", v.to_type(r)) |> Error
-    l, parser.Mod, r ->
+    l, p.Mod, r ->
       errors.UnsupportedBinop(v.to_type(l), "%", v.to_type(r)) |> Error
-    l, parser.Mul, r ->
+    l, p.Mul, r ->
       errors.UnsupportedBinop(v.to_type(l), "*", v.to_type(r)) |> Error
-    l, parser.Sub, r ->
+    l, p.Sub, r ->
       errors.UnsupportedBinop(v.to_type(l), "-", v.to_type(r)) |> Error
   }
 }
 
 fn evaluate_logical(
-  lhs: Expression,
-  op: parser.LogicalOp,
-  rhs: Expression,
+  lhs: p.Expression,
+  op: p.Logical,
+  rhs: p.Expression,
   ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
   case lhs_value, op, rhs_value {
-    v.Bool(l), parser.And, v.Bool(r) -> v.Bool(l && r) |> Ok
-    v.Bool(l), parser.Or, v.Bool(r) -> v.Bool(l || r) |> Ok
+    v.Bool(l), p.And, v.Bool(r) -> v.Bool(l && r) |> Ok
+    v.Bool(l), p.Or, v.Bool(r) -> v.Bool(l || r) |> Ok
 
-    l, parser.And, r ->
+    l, p.And, r ->
       errors.UnsupportedBinop(v.to_type(l), "&&", v.to_type(r)) |> Error
-    l, parser.Or, r ->
+    l, p.Or, r ->
       errors.UnsupportedBinop(v.to_type(l), "||", v.to_type(r)) |> Error
   }
 }
 
 fn evaluate_relation(
-  lhs: Expression,
-  op: parser.RelationOp,
-  rhs: Expression,
+  lhs: p.Expression,
+  op: p.Relation,
+  rhs: p.Expression,
   ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
   case lhs_value, op, rhs_value {
-    v.Int(l), parser.Equals, v.Float(r) -> v.Bool(int.to_float(l) == r) |> Ok
-    v.UInt(l), parser.Equals, v.Float(r) -> v.Bool(int.to_float(l) == r) |> Ok
-    v.Float(l), parser.Equals, v.Int(r) -> v.Bool(l == int.to_float(r)) |> Ok
-    v.Float(l), parser.Equals, v.UInt(r) -> v.Bool(l == int.to_float(r)) |> Ok
+    v.Int(l), p.Equals, v.Float(r) -> v.Bool(int.to_float(l) == r) |> Ok
+    v.UInt(l), p.Equals, v.Float(r) -> v.Bool(int.to_float(l) == r) |> Ok
+    v.Float(l), p.Equals, v.Int(r) -> v.Bool(l == int.to_float(r)) |> Ok
+    v.Float(l), p.Equals, v.UInt(r) -> v.Bool(l == int.to_float(r)) |> Ok
 
-    v.UInt(l), parser.Equals, v.Int(r) -> v.Bool(l == r) |> Ok
-    v.Int(l), parser.Equals, v.UInt(r) -> v.Bool(l == r) |> Ok
+    v.UInt(l), p.Equals, v.Int(r) -> v.Bool(l == r) |> Ok
+    v.Int(l), p.Equals, v.UInt(r) -> v.Bool(l == r) |> Ok
 
-    l, parser.Equals, r -> v.Bool(l == r) |> Ok
-    l, parser.NotEquals, r -> v.Bool(l != r) |> Ok
+    l, p.Equals, r -> v.Bool(l == r) |> Ok
+    l, p.NotEquals, r -> v.Bool(l != r) |> Ok
 
-    v.Int(l), parser.LessThanEq, v.Int(r) -> v.Bool(l <= r) |> Ok
-    v.Int(l), parser.LessThan, v.Int(r) -> v.Bool(l < r) |> Ok
-    v.Int(l), parser.GreaterThanEq, v.Int(r) -> v.Bool(l >= r) |> Ok
-    v.Int(l), parser.GreaterThan, v.Int(r) -> v.Bool(l > r) |> Ok
+    v.Int(l), p.LessThanEq, v.Int(r) -> v.Bool(l <= r) |> Ok
+    v.Int(l), p.LessThan, v.Int(r) -> v.Bool(l < r) |> Ok
+    v.Int(l), p.GreaterThanEq, v.Int(r) -> v.Bool(l >= r) |> Ok
+    v.Int(l), p.GreaterThan, v.Int(r) -> v.Bool(l > r) |> Ok
 
-    v.UInt(l), parser.LessThanEq, v.UInt(r) -> v.Bool(l <= r) |> Ok
-    v.UInt(l), parser.LessThan, v.UInt(r) -> v.Bool(l < r) |> Ok
-    v.UInt(l), parser.GreaterThanEq, v.UInt(r) -> v.Bool(l >= r) |> Ok
-    v.UInt(l), parser.GreaterThan, v.UInt(r) -> v.Bool(l > r) |> Ok
+    v.UInt(l), p.LessThanEq, v.UInt(r) -> v.Bool(l <= r) |> Ok
+    v.UInt(l), p.LessThan, v.UInt(r) -> v.Bool(l < r) |> Ok
+    v.UInt(l), p.GreaterThanEq, v.UInt(r) -> v.Bool(l >= r) |> Ok
+    v.UInt(l), p.GreaterThan, v.UInt(r) -> v.Bool(l > r) |> Ok
 
-    v.Int(l), parser.LessThanEq, v.UInt(r) -> v.Bool(l <= r) |> Ok
-    v.Int(l), parser.LessThan, v.UInt(r) -> v.Bool(l < r) |> Ok
-    v.Int(l), parser.GreaterThanEq, v.UInt(r) -> v.Bool(l >= r) |> Ok
-    v.Int(l), parser.GreaterThan, v.UInt(r) -> v.Bool(l > r) |> Ok
+    v.Int(l), p.LessThanEq, v.UInt(r) -> v.Bool(l <= r) |> Ok
+    v.Int(l), p.LessThan, v.UInt(r) -> v.Bool(l < r) |> Ok
+    v.Int(l), p.GreaterThanEq, v.UInt(r) -> v.Bool(l >= r) |> Ok
+    v.Int(l), p.GreaterThan, v.UInt(r) -> v.Bool(l > r) |> Ok
 
-    v.UInt(l), parser.LessThanEq, v.Int(r) -> v.Bool(l <= r) |> Ok
-    v.UInt(l), parser.LessThan, v.Int(r) -> v.Bool(l < r) |> Ok
-    v.UInt(l), parser.GreaterThanEq, v.Int(r) -> v.Bool(l >= r) |> Ok
-    v.UInt(l), parser.GreaterThan, v.Int(r) -> v.Bool(l > r) |> Ok
+    v.UInt(l), p.LessThanEq, v.Int(r) -> v.Bool(l <= r) |> Ok
+    v.UInt(l), p.LessThan, v.Int(r) -> v.Bool(l < r) |> Ok
+    v.UInt(l), p.GreaterThanEq, v.Int(r) -> v.Bool(l >= r) |> Ok
+    v.UInt(l), p.GreaterThan, v.Int(r) -> v.Bool(l > r) |> Ok
 
-    v.Int(l), parser.LessThanEq, v.Float(r) ->
-      v.Bool(int.to_float(l) <=. r) |> Ok
-    v.Int(l), parser.LessThan, v.Float(r) -> v.Bool(int.to_float(l) <. r) |> Ok
-    v.Int(l), parser.GreaterThanEq, v.Float(r) ->
+    v.Int(l), p.LessThanEq, v.Float(r) -> v.Bool(int.to_float(l) <=. r) |> Ok
+    v.Int(l), p.LessThan, v.Float(r) -> v.Bool(int.to_float(l) <. r) |> Ok
+    v.Int(l), p.GreaterThanEq, v.Float(r) -> v.Bool(int.to_float(l) >=. r) |> Ok
+    v.Int(l), p.GreaterThan, v.Float(r) -> v.Bool(int.to_float(l) >. r) |> Ok
+
+    v.UInt(l), p.LessThanEq, v.Float(r) -> v.Bool(int.to_float(l) <=. r) |> Ok
+    v.UInt(l), p.LessThan, v.Float(r) -> v.Bool(int.to_float(l) <. r) |> Ok
+    v.UInt(l), p.GreaterThanEq, v.Float(r) ->
       v.Bool(int.to_float(l) >=. r) |> Ok
-    v.Int(l), parser.GreaterThan, v.Float(r) ->
-      v.Bool(int.to_float(l) >. r) |> Ok
+    v.UInt(l), p.GreaterThan, v.Float(r) -> v.Bool(int.to_float(l) >. r) |> Ok
 
-    v.UInt(l), parser.LessThanEq, v.Float(r) ->
-      v.Bool(int.to_float(l) <=. r) |> Ok
-    v.UInt(l), parser.LessThan, v.Float(r) -> v.Bool(int.to_float(l) <. r) |> Ok
-    v.UInt(l), parser.GreaterThanEq, v.Float(r) ->
-      v.Bool(int.to_float(l) >=. r) |> Ok
-    v.UInt(l), parser.GreaterThan, v.Float(r) ->
-      v.Bool(int.to_float(l) >. r) |> Ok
+    v.Float(l), p.LessThanEq, v.Int(r) -> v.Bool(l <=. int.to_float(r)) |> Ok
+    v.Float(l), p.LessThan, v.Int(r) -> v.Bool(l <. int.to_float(r)) |> Ok
+    v.Float(l), p.GreaterThanEq, v.Int(r) -> v.Bool(l >=. int.to_float(r)) |> Ok
+    v.Float(l), p.GreaterThan, v.Int(r) -> v.Bool(l >. int.to_float(r)) |> Ok
 
-    v.Float(l), parser.LessThanEq, v.Int(r) ->
-      v.Bool(l <=. int.to_float(r)) |> Ok
-    v.Float(l), parser.LessThan, v.Int(r) -> v.Bool(l <. int.to_float(r)) |> Ok
-    v.Float(l), parser.GreaterThanEq, v.Int(r) ->
+    v.Float(l), p.LessThanEq, v.UInt(r) -> v.Bool(l <=. int.to_float(r)) |> Ok
+    v.Float(l), p.LessThan, v.UInt(r) -> v.Bool(l <. int.to_float(r)) |> Ok
+    v.Float(l), p.GreaterThanEq, v.UInt(r) ->
       v.Bool(l >=. int.to_float(r)) |> Ok
-    v.Float(l), parser.GreaterThan, v.Int(r) ->
-      v.Bool(l >. int.to_float(r)) |> Ok
+    v.Float(l), p.GreaterThan, v.UInt(r) -> v.Bool(l >. int.to_float(r)) |> Ok
 
-    v.Float(l), parser.LessThanEq, v.UInt(r) ->
-      v.Bool(l <=. int.to_float(r)) |> Ok
-    v.Float(l), parser.LessThan, v.UInt(r) -> v.Bool(l <. int.to_float(r)) |> Ok
-    v.Float(l), parser.GreaterThanEq, v.UInt(r) ->
-      v.Bool(l >=. int.to_float(r)) |> Ok
-    v.Float(l), parser.GreaterThan, v.UInt(r) ->
-      v.Bool(l >. int.to_float(r)) |> Ok
+    v.String(l), p.In, v.String(r) -> v.Bool(string.contains(r, l)) |> Ok
 
-    v.String(l), parser.In, v.String(r) -> v.Bool(string.contains(r, l)) |> Ok
-
-    l, parser.In, v.List(r) ->
+    l, p.In, v.List(r) ->
       v.Bool(
         r
         |> glearray.to_list
@@ -269,7 +272,7 @@ fn evaluate_relation(
       )
       |> Ok
 
-    l, parser.In, v.Map(r) -> {
+    l, p.In, v.Map(r) -> {
       let l_as_key =
         v.key_from_value(l)
         |> result.map_error(fn(_) { errors.InvalidValueAsKey(l) })
@@ -278,23 +281,23 @@ fn evaluate_relation(
       v.Bool(dict.has_key(r, l_key)) |> Ok
     }
 
-    l, parser.LessThanEq, r ->
+    l, p.LessThanEq, r ->
       errors.UnsupportedBinop(v.to_type(l), "<=", v.to_type(r)) |> Error
-    l, parser.LessThan, r ->
+    l, p.LessThan, r ->
       errors.UnsupportedBinop(v.to_type(l), "<", v.to_type(r)) |> Error
-    l, parser.GreaterThanEq, r ->
+    l, p.GreaterThanEq, r ->
       errors.UnsupportedBinop(v.to_type(l), ">=", v.to_type(r)) |> Error
-    l, parser.GreaterThan, r ->
+    l, p.GreaterThan, r ->
       errors.UnsupportedBinop(v.to_type(l), ">", v.to_type(r)) |> Error
-    l, parser.In, r ->
+    l, p.In, r ->
       errors.UnsupportedBinop(v.to_type(l), "in", v.to_type(r)) |> Error
   }
 }
 
 fn evaluate_ternary(
-  cond: Expression,
-  then: Expression,
-  otherwise: Expression,
+  cond: p.Expression,
+  then: p.Expression,
+  otherwise: p.Expression,
   ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use cond_val <- result.try(evaluate_expr(cond, ctx))
@@ -307,55 +310,55 @@ fn evaluate_ternary(
 }
 
 fn evaluate_unary(
-  op: parser.UnaryOp,
-  expr: Expression,
+  op: p.UnaryOp,
+  expr: p.Expression,
   ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   use val <- result.try(evaluate_expr(expr, ctx))
 
   case op, val {
-    parser.Not, v.Bool(b) -> v.Bool(!b) |> Ok
+    p.Not, v.Bool(b) -> v.Bool(!b) |> Ok
 
-    parser.UnarySub, v.Int(n) -> v.Int(-n) |> Ok
-    parser.UnarySub, v.UInt(n) -> v.UInt(-n) |> Ok
-    parser.UnarySub, v.Float(n) -> v.Float(0.0 -. n) |> Ok
+    p.UnarySub, v.Int(n) -> v.Int(-n) |> Ok
+    p.UnarySub, v.UInt(n) -> v.UInt(-n) |> Ok
+    p.UnarySub, v.Float(n) -> v.Float(0.0 -. n) |> Ok
 
-    parser.UnarySub, _ -> errors.UnsupportedUnary("-", v.to_type(val)) |> Error
-    parser.Not, _ -> errors.UnsupportedUnary("!", v.to_type(val)) |> Error
+    p.UnarySub, _ -> errors.UnsupportedUnary("-", v.to_type(val)) |> Error
+    p.Not, _ -> errors.UnsupportedUnary("!", v.to_type(val)) |> Error
   }
 }
 
 fn evaluate_expr(
-  expr: Expression,
+  expr: p.Expression,
   ctx: ctx.Context,
 ) -> Result(Value, ExecutionError) {
   case expr {
-    parser.Arithmetic(lhs, op, rhs) -> evaluate_arith(lhs, op, rhs, ctx)
-    parser.Logical(lhs, op, rhs) -> evaluate_logical(lhs, op, rhs, ctx)
-    parser.Relation(lhs, op, rhs) -> evaluate_relation(lhs, op, rhs, ctx)
-    parser.Ident(ident) ->
+    p.BinaryOperation(lhs, op, rhs) -> evaluate_binop(lhs, op, rhs, ctx)
+    p.Ident(ident) ->
       ctx.resolve_variable(ctx, ident) |> result.map_error(errors.ContextError)
-    parser.Ternary(cond, then, otherwise) ->
+    p.Ternary(cond, then, otherwise) ->
       evaluate_ternary(cond, then, otherwise, ctx)
-    parser.Unary(op, unary_expr) -> evaluate_unary(op, unary_expr, ctx)
+    p.Unary(op, unary_expr) -> evaluate_unary(op, unary_expr, ctx)
 
-    parser.Member(ident, member) -> {
+    p.Member(ident, member) -> {
       use parent <- result.try(evaluate_expr(ident, ctx))
       resolve_member(ctx, parent, member)
     }
 
-    parser.List(exprs) -> {
+    p.List(exprs) -> {
       list.try_map(exprs, fn(l) { evaluate_expr(l, ctx) })
       |> result.map(glearray.from_list)
       |> result.map(v.List)
     }
-    parser.Map(fields) -> {
+    p.Map(fields) -> {
       list.try_map(fields, fn(field) {
         let #(field_key, field_value) = field
 
+        use field_key <- result.try(evaluate_expr(field_key, ctx))
+
         use key <- result.try(
-          v.key_from_atom(field_key)
-          |> result.map_error(fn(_) { errors.InvalidAtomAsKey(field_key) }),
+          v.key_from_value(field_key)
+          |> result.map_error(fn(_) { errors.InvalidValueAsKey(field_key) }),
         )
         use val <- result.try(evaluate_expr(field_value, ctx))
 
@@ -365,7 +368,7 @@ fn evaluate_expr(
       |> result.map(v.Map)
     }
 
-    parser.FunctionCall(ident, this, args) -> {
+    p.FunctionCall(ident, this, args) -> {
       use target <- result.try(case this {
         Some(expr) -> {
           evaluate_expr(expr, ctx) |> result.map(Some)
@@ -382,22 +385,22 @@ fn evaluate_expr(
       function.call(ftx)
     }
 
-    parser.Atom(parser.Int(n)) -> v.Int(n) |> Ok
-    parser.Atom(parser.UInt(n)) -> v.UInt(n) |> Ok
-    parser.Atom(parser.Bool(b)) -> v.Bool(b) |> Ok
-    parser.Atom(parser.Float(f)) -> v.Float(f) |> Ok
-    parser.Atom(parser.Null) -> v.Null |> Ok
-    parser.Atom(parser.String(s)) -> v.String(s) |> Ok
+    p.Atom(p.Int(n)) -> v.Int(n) |> Ok
+    p.Atom(p.UInt(n)) -> v.UInt(n) |> Ok
+    p.Atom(p.Bool(b)) -> v.Bool(b) |> Ok
+    p.Atom(p.Float(f)) -> v.Float(f) |> Ok
+    p.Atom(p.Null) -> v.Null |> Ok
+    p.Atom(p.String(s)) -> v.String(s) |> Ok
   }
 }
 
 pub fn resolve_member(
   ctx: ctx.Context,
   parent: value.Value,
-  member: parser.Member,
+  member: p.Member,
 ) -> Result(Value, ExecutionError) {
   case member {
-    parser.Attribute(attr) -> {
+    p.Attribute(attr) -> {
       case parent {
         v.Map(m) ->
           dict.get(m, v.KeyString(attr))
@@ -410,7 +413,7 @@ pub fn resolve_member(
       }
       |> result.map_error(errors.ContextError)
     }
-    parser.Index(i) -> {
+    p.Index(i) -> {
       use index <- result.try(evaluate_expr(i, ctx))
 
       case parent, index {

@@ -1,17 +1,20 @@
 import gleam/float
 import gleam/int
+import gleam/io
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import nibble as n
-import nibble.{type Parser}
-import nibble/lexer as nibblexer
-import nibble/pratt
 
-import parser/lexer
+import parser/lexer as t
 
-pub type ArithmeticOp {
+pub type BinaryOp {
+  Arithmetic(Arithmetic)
+  Relation(Relation)
+  Logical(Logical)
+}
+
+pub type Arithmetic {
   Add
   Sub
   Mul
@@ -19,7 +22,7 @@ pub type ArithmeticOp {
   Mod
 }
 
-pub type RelationOp {
+pub type Relation {
   LessThan
   LessThanEq
   GreaterThan
@@ -29,7 +32,7 @@ pub type RelationOp {
   In
 }
 
-pub type LogicalOp {
+pub type Logical {
   And
   Or
 }
@@ -55,15 +58,13 @@ pub type Member {
 }
 
 pub type Expression {
-  Arithmetic(Expression, ArithmeticOp, Expression)
-  Relation(Expression, RelationOp, Expression)
-  Logical(Expression, LogicalOp, Expression)
+  BinaryOperation(Expression, BinaryOp, Expression)
   Unary(UnaryOp, Expression)
 
   Ternary(Expression, Expression, Expression)
 
   List(List(Expression))
-  Map(List(#(Atom, Expression)))
+  Map(List(#(Expression, Expression)))
 
   Member(Expression, Member)
 
@@ -98,7 +99,7 @@ pub type Expression {
 //   }
 // }
 
-// fn aop_to_string(op: ArithmeticOp) -> String {
+// fn aop_to_string(op: Arithmetic) -> String {
 //   case op {
 //     Add -> "+"
 //     Sub -> "-"
@@ -108,7 +109,7 @@ pub type Expression {
 //   }
 // }
 
-// fn rop_to_string(op: RelationOp) -> String {
+// fn rop_to_string(op: Relation) -> String {
 //   case op {
 //     Equals -> "=="
 //     NotEquals -> "!="
@@ -120,301 +121,383 @@ pub type Expression {
 //   }
 // }
 
-type Context {
-  InList
-  InMap
-  InSubExpr
-}
+fn binary_operator(token: t.Token) -> Result(BinaryOp, Nil) {
+  case token {
+    t.Plus -> Ok(Arithmetic(Add))
+    t.Minus -> Ok(Arithmetic(Sub))
+    t.Star -> Ok(Arithmetic(Mul))
+    t.Slash -> Ok(Arithmetic(Div))
+    t.Percent -> Ok(Arithmetic(Mod))
 
-fn expression_parser() -> Parser(Expression, lexer.Token, Context) {
-  let add = fn(lhs, rhs) { Arithmetic(lhs, Add, rhs) }
-  let sub = fn(lhs, rhs) { Arithmetic(lhs, Sub, rhs) }
-  let mul = fn(lhs, rhs) { Arithmetic(lhs, Mul, rhs) }
-  let div = fn(lhs, rhs) { Arithmetic(lhs, Div, rhs) }
-  let mod = fn(lhs, rhs) { Arithmetic(lhs, Mod, rhs) }
+    t.LessThan -> Ok(Relation(LessThan))
+    t.LessThanEq -> Ok(Relation(LessThanEq))
+    t.GreaterThan -> Ok(Relation(GreaterThan))
+    t.GreaterThanEq -> Ok(Relation(GreaterThanEq))
+    t.Equals -> Ok(Relation(Equals))
+    t.NotEquals -> Ok(Relation(NotEquals))
+    t.In -> Ok(Relation(In))
 
-  let lte = fn(lhs, rhs) { Relation(lhs, LessThanEq, rhs) }
-  let lt = fn(lhs, rhs) { Relation(lhs, LessThan, rhs) }
-  let gte = fn(lhs, rhs) { Relation(lhs, GreaterThanEq, rhs) }
-  let gt = fn(lhs, rhs) { Relation(lhs, GreaterThan, rhs) }
-  let eq = fn(lhs, rhs) { Relation(lhs, Equals, rhs) }
-  let neq = fn(lhs, rhs) { Relation(lhs, NotEquals, rhs) }
-  let in = fn(lhs, rhs) { Relation(lhs, In, rhs) }
+    t.And -> Ok(Logical(And))
+    t.Or -> Ok(Logical(Or))
 
-  let and = fn(lhs, rhs) { Logical(lhs, And, rhs) }
-  let or = fn(lhs, rhs) { Logical(lhs, Or, rhs) }
-
-  let member_attribute = fn(left, right) {
-    case right {
-      Ident(s) -> Member(left, Attribute(s))
-      other -> other
-    }
-  }
-
-  use expr <- n.do(pratt.expression(
-    one_of: [base_expressions],
-    and_then: [
-      pratt.infix_left(9, n.token(lexer.Dot), member_attribute),
-      pratt.infix_left(7, n.token(lexer.Star), mul),
-      pratt.infix_left(7, n.token(lexer.Slash), div),
-      pratt.infix_left(7, n.token(lexer.Percent), mod),
-      pratt.infix_left(6, n.token(lexer.Plus), add),
-      pratt.infix_left(6, n.token(lexer.Minus), sub),
-      pratt.infix_left(5, n.token(lexer.LessThanEq), lte),
-      pratt.infix_left(5, n.token(lexer.LessThan), lt),
-      pratt.infix_left(5, n.token(lexer.GreaterThanEq), gte),
-      pratt.infix_left(5, n.token(lexer.GreaterThan), gt),
-      pratt.infix_left(5, n.token(lexer.Equals), eq),
-      pratt.infix_left(5, n.token(lexer.NotEquals), neq),
-      pratt.infix_left(5, n.token(lexer.In), in),
-      pratt.infix_left(4, n.token(lexer.And), and),
-      pratt.infix_left(3, n.token(lexer.Or), or),
-    ],
-    dropping: n.succeed(Nil),
-  ))
-
-  use try_func_call <- n.do(function_call_parser(expr))
-  use try_ternary <- n.do(ternary_parser(try_func_call))
-
-  n.return(try_ternary)
-}
-
-fn func_args_parser(
-  ident: String,
-  this: option.Option(Expression),
-) -> Parser(Expression, lexer.Token, Context) {
-  use args <- n.do(n.sequence(n.lazy(expression_parser), n.token(lexer.Comma)))
-  use _ <- n.do(n.token(lexer.RightParen))
-
-  n.return(FunctionCall(ident, this, args))
-}
-
-fn function_call_parser(
-  expr: Expression,
-) -> Parser(Expression, lexer.Token, Context) {
-  use lparen <- n.do(n.optional(n.token(lexer.LeftParen)))
-
-  case expr, lparen {
-    _, None -> n.return(expr)
-    Member(this, Attribute(ident)), Some(_) ->
-      func_args_parser(ident, Some(this))
-    Ident(name), Some(_) -> func_args_parser(name, None)
-    _, Some(_) -> n.return(expr)
+    _ -> Error(Nil)
   }
 }
 
-fn ternary_parser(expr: Expression) -> Parser(Expression, lexer.Token, Context) {
-  use ternary_op <- n.do(n.optional(n.token(lexer.QuestionMark)))
+type Tokens =
+  List(#(t.Token, t.Position))
 
-  case ternary_op {
-    None -> n.return(expr)
-    Some(_) -> {
-      use then <- n.do(n.lazy(expression_parser))
-      use _ <- n.do(n.token(lexer.Colon))
-      use otherwise <- n.do(n.lazy(expression_parser))
+fn expression(tokens: Tokens) -> Result(#(Expression, Tokens), Error) {
+  expression_loop(tokens, [], [])
+}
 
-      n.return(Ternary(expr, then, otherwise))
+fn expression_loop(
+  tokens: Tokens,
+  operators: List(BinaryOp),
+  values: List(Expression),
+) -> Result(#(Expression, List(#(t.Token, t.Position))), Error) {
+  use #(expr, tokens) <- result.try(expression_unit(tokens))
+
+  let expr = case expr {
+    None -> Error(DeadEnd(tokens))
+    Some(e) -> {
+      let values = [e, ..values]
+
+      let binop = case tokens {
+        [#(token, _), ..tokens] -> {
+          use op <- result.map(binary_operator(token))
+          #(op, tokens)
+        }
+        [] -> Error(Nil)
+      }
+
+      case binop {
+        Ok(#(operator, tokens)) -> {
+          case handle_operator(Some(operator), operators, values) {
+            #(Some(expression), _, _) -> Ok(#(expression, tokens))
+            #(None, operators, values) ->
+              expression_loop(tokens, operators, values)
+          }
+        }
+        _ ->
+          case handle_operator(None, operators, values).0 {
+            None -> Error(DeadEnd(tokens))
+            Some(expression) -> Ok(#(expression, tokens))
+          }
+      }
     }
+  }
+
+  use #(expr, tokens) <- result.try(expr)
+
+  // Try to parse ternary expression
+  case tokens {
+    [#(t.QuestionMark, _), ..tokens] -> {
+      use #(then, tokens) <- result.try(expression(tokens))
+
+      case tokens {
+        [#(t.Colon, _), ..tokens] -> {
+          use #(otherwise, tokens) <- result.map(expression(tokens))
+          #(Ternary(expr, then, otherwise), tokens)
+        }
+        _ -> unexpected(tokens)
+      }
+    }
+    _ -> Ok(#(expr, tokens))
   }
 }
 
-fn base_expressions(conf) -> Parser(Expression, lexer.Token, Context) {
-  let not = fn(expr) { Unary(Not, expr) }
-  let unary_sub = fn(expr) { Unary(UnarySub, expr) }
+/// Simple-Precedence-Parser, handle seeing an operator or end
+fn handle_operator(
+  next: Option(BinaryOp),
+  operators: List(BinaryOp),
+  values: List(Expression),
+) -> #(Option(Expression), List(BinaryOp), List(Expression)) {
+  case next, operators, values {
+    Some(operator), [], _ -> #(None, [operator], values)
 
-  use leaf <- n.do(
-    n.one_of([
-      atom_expr_parser(conf),
-      ident_parser(conf),
-      parens_parser(conf),
-      list_parser(conf),
-      map_parser(conf),
-      pratt.prefix(8, n.token(lexer.ExclamationMark), not)(conf),
-      pratt.prefix(8, n.token(lexer.Minus), unary_sub)(conf),
-    ]),
-  )
-
-  use index_op <- n.do(n.optional(n.token(lexer.LeftSquare)))
-
-  case index_op {
-    option.None -> n.return(leaf)
-    option.Some(_) -> {
-      use index <- n.do(pratt.sub_expression(conf, 0))
-      use _ <- n.do(n.token(lexer.RightSquare))
-
-      n.return(Member(leaf, Index(index)))
+    Some(next), [previous, ..operators], [a, b, ..rest_values] -> {
+      case precedence(previous) <= precedence(next) {
+        True -> {
+          let values = [BinaryOperation(b, previous, a), ..rest_values]
+          handle_operator(Some(next), operators, values)
+        }
+        False -> {
+          #(None, [next, previous, ..operators], values)
+        }
+      }
     }
+
+    None, [operator, ..operators], [a, b, ..values] -> {
+      let values = [BinaryOperation(b, operator, a), ..values]
+      handle_operator(None, operators, values)
+    }
+
+    None, [], [expression] -> #(Some(expression), operators, values)
+    None, [], [] -> #(None, operators, values)
+    _, _, _ -> panic as "parser bug, operator expression not full reduced"
   }
 }
 
-fn map_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- n.do(n.token(lexer.LeftCurly))
-  use fields <- n.do_in(InMap, n.sequence(field_parser(), n.token(lexer.Comma)))
-  use _ <- n.do(n.token(lexer.RightCurly))
-
-  n.return(Map(fields))
-}
-
-fn field_parser() -> Parser(#(Atom, Expression), lexer.Token, Context) {
-  use key <- n.do(atom_parser(Nil))
-  use _ <- n.do(n.token(lexer.Colon))
-  use value <- n.do(n.lazy(expression_parser))
-
-  n.return(#(key, value))
-}
-
-fn list_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- n.do(n.token(lexer.LeftSquare))
-  use exprs <- n.do_in(
-    InList,
-    n.sequence(n.lazy(expression_parser), n.token(lexer.Comma)),
-  )
-  use _ <- n.do(n.token(lexer.RightSquare))
-
-  n.return(List(exprs))
-}
-
-fn parens_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- n.do(n.token(lexer.LeftParen))
-  use n <- n.do_in(InSubExpr, n.lazy(expression_parser))
-  use _ <- n.do(n.token(lexer.RightParen))
-
-  n.return(n)
-}
-
-fn ident_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use _ <- n.do(n.optional(n.token(lexer.Dot)))
-  use tok <- n.take_map("IDENT")
-
-  case tok {
-    lexer.Ident(s) -> Ident(s) |> Some
-    _ -> None
+fn precedence(operator: BinaryOp) -> Int {
+  case operator {
+    Arithmetic(Mul) | Arithmetic(Div) | Arithmetic(Mod) -> 3
+    Arithmetic(Add) | Arithmetic(Sub) -> 4
+    Relation(_) -> 5
+    Logical(And) -> 6
+    Logical(Or) -> 7
   }
 }
 
-fn atom_expr_parser(_) -> Parser(Expression, lexer.Token, Context) {
-  use atom <- n.do(atom_parser(Nil))
+fn expression_unit(
+  tokens: Tokens,
+) -> Result(#(Option(Expression), Tokens), Error) {
+  use #(parsed, tokens) <- result.try(case tokens {
+    [#(t.Ident(name), _), ..tokens] -> Ok(#(Some(Ident(name)), tokens))
 
-  n.return(Atom(atom))
-}
-
-fn atom_parser(_) -> Parser(Atom, lexer.Token, Context) {
-  use tok <- n.take_map("STRING | INT | FLOAT | BOOL | NULL | IDENT")
-
-  case tok {
-    lexer.String(s) -> String(s) |> Some
-    lexer.Int(n) -> {
-      let assert Ok(i) = int.parse(n)
-      Int(i) |> Some
+    [#(t.Bool(value), _), ..tokens] -> {
+      Ok(#(Some(Atom(Bool(value))), tokens))
     }
-    lexer.UInt(n) -> {
-      let excl_suffix = string.drop_right(n, 1)
-      let assert Ok(i) = int.parse(excl_suffix)
 
-      UInt(i) |> Some
+    [#(t.Int(value), _), ..tokens] -> {
+      let assert Ok(n) = int.parse(value)
+      Ok(#(Some(Atom(Int(n))), tokens))
     }
-    lexer.Float(n) -> {
-      let assert Ok(f) = float.parse(n)
-      Float(f) |> Some
+    [#(t.UInt(value), _), ..tokens] -> {
+      let excl_suffix = string.drop_right(value, 1)
+      let assert Ok(n) = int.parse(excl_suffix)
+      Ok(#(Some(Atom(UInt(n))), tokens))
     }
-    lexer.Bool(b) -> Bool(b) |> Some
-    lexer.Null -> Null |> Some
-    _ -> None
-  }
-}
+    [#(t.Float(value), _), ..tokens] -> {
+      let assert Ok(f) = float.parse(value)
+      Ok(#(Some(Atom(Float(f))), tokens))
+    }
+    [#(t.String(value), _), ..tokens] ->
+      Ok(#(Some(Atom(String(value))), tokens))
 
-fn byte_offset_to_coords(
-  source_line_lengths: List(Int),
-  byte_offset: Int,
-) -> #(Int, Int) {
-  source_line_lengths
-  |> list.fold_until(#(0, byte_offset), fn(acc, line_length) {
-    case acc.1 <= line_length {
-      True -> list.Stop(acc)
-      False -> list.Continue(#(acc.0 + 1, acc.1 - 1 - line_length))
+    [#(t.LeftSquare, _), ..tokens] -> {
+      let result = list(expression, None, [], tokens)
+      use #(elements, tokens) <- result.map(result)
+      #(Some(List(elements)), tokens)
     }
+
+    [#(t.LeftCurly, _), ..tokens] -> {
+      let result = comma_delimited([], tokens, map_field, t.RightCurly)
+      use #(fields, tokens) <- result.map(result)
+      #(Some(Map(fields)), tokens)
+    }
+
+    [#(t.ExclamationMark, _), ..tokens] -> {
+      use #(expression, tokens) <- result.map(expression(tokens))
+      #(Some(Unary(Not, expression)), tokens)
+    }
+
+    [#(t.Minus, _), ..tokens] -> {
+      use #(expression, tokens) <- result.map(expression(tokens))
+      #(Some(Unary(UnarySub, expression)), tokens)
+    }
+
+    [#(t.LeftParen, _), ..tokens] -> {
+      use #(expression, tokens) <- result.try(expression(tokens))
+
+      case tokens {
+        [#(t.RightParen, _), ..tokens] -> Ok(#(Some(expression), tokens))
+        _ -> unexpected(tokens)
+      }
+    }
+
+    _ -> Ok(#(None, tokens))
   })
+
+  case parsed {
+    Some(expression) -> {
+      case after_expression(expression, tokens) {
+        Ok(#(expression, tokens)) -> Ok(#(Some(expression), tokens))
+        Error(error) -> Error(error)
+      }
+    }
+    None -> Ok(#(None, tokens))
+  }
 }
 
-fn lexer_to_n_token(
-  rich_token: #(lexer.Token, lexer.Position),
-  source: String,
-  source_line_lengths: List(Int),
-) -> nibblexer.Token(lexer.Token) {
-  let #(token, lexer.Position(current_offset, byte_size)) = rich_token
-  let token_source = source |> string.slice(current_offset, byte_size)
+fn comma_delimited(
+  items: List(t),
+  tokens: Tokens,
+  parse parser: fn(Tokens) -> Result(#(t, Tokens), Error),
+  until final: t.Token,
+) {
+  case tokens {
+    [] -> Error(UnexpectedEndOfFile)
+    [#(token, _), ..tokens] if token == final ->
+      Ok(#(list.reverse(items), tokens))
+    _ -> {
+      use #(element, tokens) <- result.try(parser(tokens))
 
-  let #(start_row, start_col) =
-    byte_offset_to_coords(source_line_lengths, current_offset)
-  let #(stop_row, stop_col) =
-    byte_offset_to_coords(source_line_lengths, current_offset + byte_size)
-
-  nibblexer.Token(
-    nibblexer.Span(start_row, start_col, stop_row, stop_col),
-    token_source,
-    token,
-  )
+      case tokens {
+        [#(t.Comma, _), ..tokens] ->
+          comma_delimited([element, ..items], tokens, parser, final)
+        [#(token, _), ..tokens] if token == final ->
+          Ok(#(list.reverse([element, ..items]), tokens))
+        _ -> unexpected(tokens)
+      }
+    }
+  }
 }
 
-pub type ParseError {
+fn map_field(
+  tokens: Tokens,
+) -> Result(#(#(Expression, Expression), Tokens), Error) {
+  use #(key_expression, tokens) <- result.try(expression(tokens))
+
+  case tokens {
+    [#(t.Colon, _), ..tokens] -> {
+      use #(value_expression, tokens) <- result.map(expression(tokens))
+      #(#(key_expression, value_expression), tokens)
+    }
+    _ -> unexpected(tokens)
+  }
+}
+
+fn list(
+  parser: fn(Tokens) -> Result(#(t, Tokens), Error),
+  discard: Option(t),
+  acc: List(t),
+  tokens: Tokens,
+) -> Result(#(List(t), Tokens), Error) {
+  case tokens {
+    [#(t.RightSquare, _), ..tokens] -> Ok(#(list.reverse(acc), tokens))
+
+    // TODO: Lenient comma or not?
+    [#(t.Comma, _), #(t.RightSquare, _), ..tokens] if acc != [] ->
+      Ok(#(list.reverse(acc), tokens))
+
+    _ -> {
+      use #(element, tokens) <- result.try(parser(tokens))
+      let acc = [element, ..acc]
+      case tokens {
+        [#(t.RightSquare, _), ..tokens]
+        | [#(t.Comma, _), #(t.RightSquare, _), ..tokens] ->
+          Ok(#(list.reverse(acc), tokens))
+
+        [#(t.Comma, _), ..tokens] -> list(parser, discard, acc, tokens)
+
+        [#(other, position), ..] ->
+          Error(UnexpectedToken(other, position.byte_offset))
+        [] -> Error(UnexpectedEndOfFile)
+      }
+    }
+  }
+}
+
+fn after_expression(
+  parsed: Expression,
+  tokens: Tokens,
+) -> Result(#(Expression, Tokens), Error) {
+  case tokens {
+    // Member attribute
+    [#(t.Dot, _), #(t.Ident(label), _), ..tokens] -> {
+      after_expression(Member(parsed, Attribute(label)), tokens)
+    }
+
+    // Member index
+    [#(t.LeftSquare, _), ..tokens] -> {
+      use #(expression, tokens) <- result.try(expression(tokens))
+      case tokens {
+        [#(t.RightSquare, _), ..tokens] ->
+          Ok(#(Member(parsed, Index(expression)), tokens))
+        _ -> unexpected(tokens)
+      }
+    }
+
+    // Function call
+    [#(t.LeftParen, pos), ..tokens] -> {
+      case parsed {
+        Ident(ident) -> {
+          call([], ident, None, tokens)
+        }
+        Member(this, Attribute(ident)) -> {
+          call([], ident, Some(this), tokens)
+        }
+        _ -> Error(UnexpectedToken(t.LeftParen, pos.byte_offset))
+      }
+    }
+
+    _ -> Ok(#(parsed, tokens))
+  }
+}
+
+fn call(
+  arguments: List(Expression),
+  ident: String,
+  this: Option(Expression),
+  tokens: Tokens,
+) -> Result(#(Expression, Tokens), Error) {
+  case tokens {
+    [] -> Error(UnexpectedEndOfFile)
+
+    [#(t.RightParen, _), ..tokens] -> {
+      let call = FunctionCall(ident, this, list.reverse(arguments))
+      after_expression(call, tokens)
+    }
+
+    _ -> {
+      use #(argument, tokens) <- result.try(expression(tokens))
+      let arguments = [argument, ..arguments]
+      case tokens {
+        [#(t.Comma, _), ..tokens] -> {
+          call(arguments, ident, this, tokens)
+        }
+        [#(t.RightParen, _), ..tokens] -> {
+          let call = FunctionCall(ident, this, list.reverse(arguments))
+          after_expression(call, tokens)
+        }
+        _ -> unexpected(tokens)
+      }
+    }
+  }
+}
+
+pub type Error {
   UnexpectedEndOfFile
-  Unexpected(String, Int)
-  DeadEnd(List(#(n.Error(lexer.Token), Int)))
+  UnexpectedSourceStr(String, Int)
+  UnexpectedToken(t.Token, Int)
+  DeadEnd(Tokens)
 }
 
-pub fn tokenize(
-  source: String,
-) -> Result(List(nibblexer.Token(lexer.Token)), ParseError) {
-  let source_line_lengths =
-    source |> string.split("\n") |> list.map(string.length)
+fn unexpected(tokens: Tokens) -> Result(a, Error) {
+  case tokens {
+    [#(token, pos), ..] -> Error(UnexpectedToken(token, pos.byte_offset))
+    [] -> Error(UnexpectedEndOfFile)
+  }
+}
 
-  let lexed = lexer.new(source) |> lexer.lex
+pub fn tokenize(source: String) -> Result(Tokens, Error) {
+  let lexed = t.new(source) |> t.lex
 
-  let check_last_token = case lexed |> list.last {
-    Ok(#(lexer.UnexpectedGrapheme(s), lexer.Position(offset, _))) ->
-      Error(Unexpected(s, offset))
-    Ok(#(lexer.UnterminatedString(s), lexer.Position(offset, _))) ->
-      Error(Unexpected(s, offset))
+  let check_last_token = case list.last(lexed) {
+    Ok(#(t.UnexpectedGrapheme(s), t.Position(offset, _))) ->
+      Error(UnexpectedSourceStr(s, offset))
+    Ok(#(t.UnterminatedString(s), t.Position(offset, _))) ->
+      Error(UnexpectedSourceStr(s, offset))
     Error(Nil) -> Error(UnexpectedEndOfFile)
     _ -> Ok(Nil)
   }
 
-  use _ <- result.try(check_last_token)
+  use _ <- result.map(check_last_token)
 
-  let tokens =
-    lexed
-    |> list.map(fn(token) {
-      lexer_to_n_token(token, source, source_line_lengths)
-    })
-
-  Ok(tokens)
+  lexed
 }
 
-pub fn parse_(
-  tokens: List(nibblexer.Token(lexer.Token)),
-) -> Result(Expression, ParseError) {
-  let parsed =
-    n.run(tokens, expression_parser())
-    |> result.map_error(fn(dead_ends) {
-      dead_ends
-      |> list.map(fn(end) {
-        let n.DeadEnd(
-          pos: nibblexer.Span(_rs, cs, _re, _ce),
-          problem: tok,
-          context: _ctx,
-        ) = end
+pub fn parse_(tokens: Tokens) -> Result(Expression, Error) {
+  use #(expr, rest) <- result.try(expression(tokens))
 
-        #(tok, cs)
-      })
-      |> DeadEnd
-    })
-
-  use expr <- result.try(parsed)
-
-  Ok(expr)
+  case rest {
+    [] -> Ok(expr)
+    _ -> Error(DeadEnd(rest))
+  }
 }
 
-pub fn parse(source: String) -> Result(Expression, ParseError) {
+pub fn parse(source: String) -> Result(Expression, Error) {
   tokenize(source)
   |> result.then(parse_)
 }

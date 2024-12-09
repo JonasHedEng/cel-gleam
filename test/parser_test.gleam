@@ -35,9 +35,13 @@ pub fn parse_nested_ternary_test() {
 
   let expected =
     p.Ternary(
-      p.Relation(p.Ident("a"), p.Equals, p.Atom(p.Int(1))),
+      p.BinaryOperation(p.Ident("a"), p.Relation(p.Equals), p.Atom(p.Int(1))),
       p.Ternary(
-        p.Relation(p.Ident("b"), p.GreaterThan, p.Atom(p.Int(3))),
+        p.BinaryOperation(
+          p.Ident("b"),
+          p.Relation(p.GreaterThan),
+          p.Atom(p.Int(3)),
+        ),
         p.Atom(p.Int(2)),
         p.Atom(p.Int(4)),
       ),
@@ -57,9 +61,9 @@ pub fn parse_map_test() {
 
   let expected =
     p.Map([
-      #(p.String("a"), p.Atom(p.Int(1))),
-      #(p.String("b"), p.Atom(p.Int(2))),
-      #(p.String("c"), p.Atom(p.Int(3))),
+      #(p.Atom(p.String("a")), p.Atom(p.Int(1))),
+      #(p.Atom(p.String("b")), p.Atom(p.Int(2))),
+      #(p.Atom(p.String("c")), p.Atom(p.Int(3))),
     ])
 
   parsed
@@ -137,7 +141,10 @@ pub fn parse_function_call_test() {
     p.FunctionCall(
       "map",
       option.Some(p.List([p.Int(1), p.Int(2), p.Int(3)] |> list.map(p.Atom))),
-      [p.Ident("x"), p.Arithmetic(p.Ident("x"), p.Mul, p.Atom(p.Int(2)))],
+      [
+        p.Ident("x"),
+        p.BinaryOperation(p.Ident("x"), p.Arithmetic(p.Mul), p.Atom(p.Int(2))),
+      ],
     )
 
   parsed

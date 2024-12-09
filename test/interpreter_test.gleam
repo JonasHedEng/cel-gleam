@@ -109,10 +109,10 @@ pub fn member_field_test() {
   |> should.equal(Ok(value.String("b")))
 }
 
-pub fn parse_function_call_ternary_test() {
+pub fn function_call_ternary_test() {
   let source = "false ? 'hmm' : [1, 2, 3, 4].filter(x, x % 2 == 0)"
 
-  let assert Ok(program) = interpreter.new(source) |> io.debug
+  let assert Ok(program) = interpreter.new(source)
 
   let ctx =
     context.empty()

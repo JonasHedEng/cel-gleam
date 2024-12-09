@@ -15,7 +15,6 @@ pub type ExecutionError {
   UnsupportedBinop(Type, String, Type)
   UnsupportedUnary(String, Type)
   UnexpectedType(expected: Type, got: Type, in_context: String)
-  InvalidAtomAsKey(parser.Atom)
   InvalidValueAsKey(Value)
   UnsupportedTernaryCondition(Type)
   ArithmeticError
