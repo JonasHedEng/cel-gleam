@@ -1,5 +1,4 @@
 import gleam/dict
-import gleam/io
 import glearray
 import gleeunit/should
 
@@ -114,12 +113,30 @@ pub fn function_call_ternary_test() {
 
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx =
-    context.empty()
-    |> context.insert_function("filter", context.Callable(interpreter.filter))
+  let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
   |> should.equal(
     Ok(value.List(glearray.from_list([value.Int(2), value.Int(4)]))),
+  )
+}
+
+pub fn expr_key_map_test() {
+  let source = "{'a' + 'b': 1, 'cd': 5 + 2 * 7, 'c': [a][0]}"
+
+  let assert Ok(program) = interpreter.new(source)
+
+  let ctx =
+    context.empty()
+    |> context.insert_variable("a", value.Int(3))
+
+  interpreter.execute(program, ctx)
+  |> should.equal(
+    Ok(value.Map(
+      dict.new()
+      |> dict.insert(value.KeyString("ab"), value.Int(1))
+      |> dict.insert(value.KeyString("c"), value.Int(3))
+      |> dict.insert(value.KeyString("cd"), value.Int(19)),
+    )),
   )
 }

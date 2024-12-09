@@ -2,7 +2,7 @@ import gleam/dict.{type Dict}
 import gleam/option.{type Option}
 import gleam/result
 
-import interpreter/errors.{type ContextError, type ExecutionError}
+import interpreter/error.{type ContextError, type ExecutionError}
 import interpreter/value.{type Value}
 import parser.{type Expression}
 
@@ -66,7 +66,7 @@ pub fn resolve_variable(
   case ctx {
     Root(variables, _functions) -> {
       dict.get(variables, name)
-      |> result.replace_error(errors.UnknownIdentifier(name))
+      |> result.replace_error(error.UnknownIdentifier(name))
     }
     Child(variables, parent) -> {
       case dict.get(variables, name) {
@@ -84,7 +84,7 @@ pub fn resolve_function(
   case ctx {
     Root(variables: _, functions:) -> {
       dict.get(functions, name)
-      |> result.replace_error(errors.UnknownFunction(name))
+      |> result.replace_error(error.UnknownFunction(name))
     }
     Child(_variables, parent) -> {
       resolve_function(parent, name)

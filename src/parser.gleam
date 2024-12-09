@@ -1,6 +1,8 @@
+// Heavily inspired by
+// https://github.com/lpil/glance/blob/main/src/glance.gleam
+
 import gleam/float
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -72,54 +74,6 @@ pub type Expression {
   Atom(Atom)
   Ident(String)
 }
-
-// fn expr_to_string(expr: Expression) -> String {
-//   case expr {
-//     Arithmetic(lhs, op, rhs) -> {
-//       expr_to_string(lhs)
-//       <> " "
-//       <> aop_to_string(op)
-//       <> " "
-//       <> expr_to_string(rhs)
-//     }
-//     Atom(Int(n)) -> int.to_string(n)
-//     Atom(UInt(n)) -> int.to_string(n) <> "u"
-//     Atom(Float(n)) -> float.to_string(n)
-//     Atom(String(s)) -> s
-//     Atom(Null) -> "null"
-//     Atom(Bool(b)) -> bool.to_string(b)
-//     Ident(i) -> i
-//     Relation(lhs, op, rhs) -> {
-//       expr_to_string(lhs)
-//       <> " "
-//       <> rop_to_string(op)
-//       <> " "
-//       <> expr_to_string(rhs)
-//     }
-//   }
-// }
-
-// fn aop_to_string(op: Arithmetic) -> String {
-//   case op {
-//     Add -> "+"
-//     Sub -> "-"
-//     Mul -> "*"
-//     Div -> "/"
-//     Mod -> "%"
-//   }
-// }
-
-// fn rop_to_string(op: Relation) -> String {
-//   case op {
-//     Equals -> "=="
-//     NotEquals -> "!="
-//     LessThanEq -> "<="
-//     LessThan -> "<"
-//     GreaterThanEq -> ">="
-//     GreaterThan -> ">"
-//     In -> "in"
-//   }
-// }
 
 fn binary_operator(token: t.Token) -> Result(BinaryOp, Nil) {
   case token {
