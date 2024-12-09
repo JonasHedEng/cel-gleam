@@ -1,5 +1,4 @@
 import gleam/dict
-import glearray
 import gleeunit/should
 
 import interpreter
@@ -24,7 +23,6 @@ pub fn list_test() {
 
   let expected =
     [value.UInt(7), value.UInt(1)]
-    |> glearray.from_list
     |> value.List
 
   interpreter.execute(program, ctx)
@@ -96,7 +94,6 @@ pub fn member_field_test() {
 
   let arr =
     [value.String("a"), value.String("b"), value.String("c")]
-    |> glearray.from_list
     |> value.List
 
   let ctx =
@@ -116,9 +113,7 @@ pub fn function_call_ternary_test() {
   let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
-  |> should.equal(
-    Ok(value.List(glearray.from_list([value.Int(2), value.Int(4)]))),
-  )
+  |> should.equal(Ok(value.List([value.Int(2), value.Int(4)])))
 }
 
 pub fn expr_key_map_test() {

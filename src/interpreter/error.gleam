@@ -5,7 +5,6 @@ pub type ContextError {
   UnknownIdentifier(String)
   UnknownFunction(String)
   NoSuchKey(parser.Member)
-  IndexOutOfBounds(size: Int, index: Int)
   InvalidMemberParent(parent_type: Type, member: parser.Member)
 }
 
@@ -16,6 +15,7 @@ pub type ExecutionError {
   UnsupportedUnary(String, Type)
   UnexpectedType(expected: Type, got: Type, in_context: String)
   InvalidValueAsKey(Value)
+  IndexOutOfBounds(size: Int, index: Int)
   UnsupportedTernaryCondition(Type)
   ArithmeticError
 

@@ -1,7 +1,6 @@
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
-import glearray
 
 import interpreter/context as ctx
 import interpreter/error.{type ExecutionError}
@@ -52,11 +51,10 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
       filter_impl(
         ctx: ctx,
         ident: ident,
-        items: glearray.to_list(items),
+        items: items,
         filtered: [],
         expr: expr,
       )
-      |> result.map(glearray.from_list)
       |> result.map(v.List)
     }
     Some(other) ->

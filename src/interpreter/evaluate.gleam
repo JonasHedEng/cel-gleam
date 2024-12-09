@@ -5,7 +5,6 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
-import glearray
 
 import interpreter/context as ctx
 import interpreter/error.{type ExecutionError}
@@ -32,7 +31,6 @@ pub fn evaluate_expr(
 
     p.List(exprs) -> {
       list.try_map(exprs, fn(l) { evaluate_expr(l, ctx) })
-      |> result.map(glearray.from_list)
       |> result.map(v.List)
     }
     p.Map(fields) -> {
@@ -153,12 +151,7 @@ fn evaluate_arithmetic(
       |> result.map_error(fn(_) { error.ArithmeticError })
 
     v.String(l), p.Add, v.String(r) -> v.String(l <> r) |> Ok
-    v.List(l), p.Add, v.List(r) ->
-      v.List(
-        list.flatten([glearray.to_list(l), glearray.to_list(r)])
-        |> glearray.from_list,
-      )
-      |> Ok
+    v.List(l), p.Add, v.List(r) -> v.List(list.flatten([l, r])) |> Ok
 
     l, p.Add, r ->
       error.UnsupportedBinop(v.to_type(l), "+", v.to_type(r)) |> Error
@@ -258,23 +251,22 @@ fn evaluate_relation(
 
     v.String(l), p.In, v.String(r) -> v.Bool(string.contains(r, l)) |> Ok
 
-    l, p.In, v.List(r) ->
+    item, p.In, v.List(container) ->
       v.Bool(
-        r
-        |> glearray.to_list
-        |> list.find(fn(x) { x == l })
+        container
+        |> list.find(fn(x) { x == item })
         |> result.map(fn(_) { True })
         |> result.unwrap(False),
       )
       |> Ok
 
-    l, p.In, v.Map(r) -> {
-      let l_as_key =
-        v.key_from_value(l)
-        |> result.map_error(fn(_) { error.InvalidValueAsKey(l) })
-      use l_key <- result.try(l_as_key)
+    item, p.In, v.Map(container) -> {
+      let item_as_key =
+        v.key_from_value(item)
+        |> result.map_error(fn(_) { error.InvalidValueAsKey(item) })
 
-      v.Bool(dict.has_key(r, l_key)) |> Ok
+      use item_key <- result.map(item_as_key)
+      v.Bool(dict.has_key(container, item_key))
     }
 
     l, p.LessThanEq, r ->
@@ -324,6 +316,18 @@ fn evaluate_unary(
   }
 }
 
+fn find_in_list(
+  in container: List(t),
+  at target: Int,
+  current index: Int,
+) -> Result(t, error.ExecutionError) {
+  case container {
+    [] -> Error(error.IndexOutOfBounds(size: index, index: target))
+    [item, ..] if target == index -> Ok(item)
+    [_, ..rest] -> find_in_list(in: rest, at: target, current: index + 1)
+  }
+}
+
 fn resolve_member(
   ctx: ctx.Context,
   parent: value.Value,
@@ -347,32 +351,32 @@ fn resolve_member(
       use index <- result.try(evaluate_expr(i, ctx))
 
       case parent, index {
-        v.List(l), v.Int(idx) -> {
-          glearray.get(l, idx)
-          |> result.replace_error(error.IndexOutOfBounds(
-            size: glearray.length(l),
-            index: idx,
-          ))
+        v.List(container), v.Int(idx) | v.List(container), v.UInt(idx) -> {
+          find_in_list(container, idx, 0)
         }
         v.Map(m), v.String(attr) -> {
           dict.get(m, v.KeyString(attr))
           |> result.replace_error(error.UnknownIdentifier(attr))
+          |> result.map_error(error.ContextError)
         }
         v.Map(m), v.Int(attr) -> {
           dict.get(m, v.KeyInt(attr))
           |> result.replace_error(error.NoSuchKey(member))
+          |> result.map_error(error.ContextError)
         }
-        v.Map(m), v.UInt(attr) -> {
-          dict.get(m, v.KeyUInt(attr))
-          |> result.replace_error(error.NoSuchKey(member))
-        }
+        v.Map(m), v.UInt(attr) ->
+          {
+            dict.get(m, v.KeyUInt(attr))
+            |> result.replace_error(error.NoSuchKey(member))
+          }
+          |> result.map_error(error.ContextError)
         other, _ ->
           Error(error.InvalidMemberParent(
             parent_type: v.to_type(other),
             member:,
           ))
+          |> result.map_error(error.ContextError)
       }
-      |> result.map_error(error.ContextError)
     }
   }
 }

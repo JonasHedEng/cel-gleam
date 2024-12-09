@@ -1,23 +1,11 @@
 import gleam/dict
 import gleam/option.{type Option}
-import glearray
-import parser
 
 pub type Key {
   KeyInt(Int)
   KeyUInt(Int)
   KeyBool(Bool)
   KeyString(String)
-}
-
-pub fn key_from_atom(atom: parser.Atom) -> Result(Key, Nil) {
-  case atom {
-    parser.Bool(k) -> Ok(KeyBool(k))
-    parser.Int(k) -> Ok(KeyInt(k))
-    parser.UInt(k) -> Ok(KeyUInt(k))
-    parser.String(k) -> Ok(KeyString(k))
-    _ -> Error(Nil)
-  }
 }
 
 pub fn key_from_value(value: Value) -> Result(Key, Nil) {
@@ -31,7 +19,7 @@ pub fn key_from_value(value: Value) -> Result(Key, Nil) {
 }
 
 pub type Value {
-  List(glearray.Array(Value))
+  List(List(Value))
   Map(dict.Dict(Key, Value))
   Function(String, Option(Value))
   Int(Int)
