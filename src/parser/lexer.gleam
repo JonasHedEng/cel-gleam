@@ -2,7 +2,11 @@
 // https://github.com/DanielleMaywood/glexer/blob/main/src/glexer.gleam
 
 import gleam/bit_array
+import gleam/bool
+import gleam/int
+import gleam/io
 import gleam/iterator.{type Iterator}
+import gleam/result
 import gleam/string
 
 pub type Token {
@@ -12,7 +16,7 @@ pub type Token {
   UInt(String)
   Float(String)
   String(String)
-  ByteString(String)
+  Bytes(BitArray)
   Bool(Bool)
   Null
 
@@ -60,7 +64,10 @@ pub type Token {
 
   // Invalid code tokens
   UnterminatedString(String)
+  UnterminatedBytes(BitArray)
   UnexpectedGrapheme(String)
+
+  InvalidByteLiteral(String)
 }
 
 pub type Position {
@@ -174,7 +181,7 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
     "/" <> rest -> #(advance(lexer, rest, 1), token(lexer, Slash, 1))
     "%" <> rest -> #(advance(lexer, rest, 1), token(lexer, Percent, 1))
 
-    // Strings
+    // String/Byte literals
     "r\"\"\"" <> rest | "R\"\"\"" <> rest ->
       lex_string(rest, "", "\"\"\"", lexer.position, True)
     "r'''" <> rest | "R'''" <> rest ->
@@ -184,6 +191,8 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
       lex_string(rest, "", "\"", lexer.position, True)
     "r'" <> rest | "R'" <> rest ->
       lex_string(rest, "", "'", lexer.position, True)
+
+    "b\"" <> rest -> lex_bytes(rest, <<>>, "\"", lexer.position)
 
     "\"\"\"" <> rest -> lex_string(rest, "", "\"\"\"", lexer.position, False)
     "'''" <> rest -> lex_string(rest, "", "'''", lexer.position, False)
@@ -332,7 +341,6 @@ fn token(lexer: Lexer, token: Token, size: Int) -> #(Token, Position) {
   #(token, Position(lexer.position, size))
 }
 
-// TODO: Just supports single- and double quoted strings
 fn lex_string(
   input: String,
   content: String,
@@ -366,7 +374,10 @@ fn lex_string(
       case string.pop_grapheme(rest) {
         Error(_) -> lex_string(rest, content <> "\\", init, start, raw)
         Ok(#(g, rest)) ->
-          lex_string(rest, content <> "\\" <> g, init, start, raw)
+          // lex_string(rest, content <> "\\" <> g, init, start, raw)
+
+          // TODO: Is it too naive to perform the escaping here?
+          lex_string(rest, content <> g, init, start, raw)
       }
     }
 
@@ -379,6 +390,92 @@ fn lex_string(
         Error(_) -> {
           let lexer = Lexer("", start + byte_size(content) + 1)
           #(lexer, #(UnterminatedString(content), Position(start, 0)))
+        }
+      }
+    }
+  }
+}
+
+fn lex_bytes(
+  input: String,
+  content: BitArray,
+  init: String,
+  start: Int,
+) -> #(Lexer, #(Token, Position)) {
+  case input, init {
+    // "\"\"\"" <> rest, "\"\"\"" | "'''" <> rest, "'''" -> {
+    //   let size = case raw {
+    //     True -> byte_size(content) + 7
+    //     False -> byte_size(content) + 6
+    //   }
+    //   let lexer = Lexer(rest, start + size)
+    //   #(lexer, #(String(content), Position(start, size)))
+    // }
+    "\"" <> rest, "\"" | "'" <> rest, "'" -> {
+      let size = bit_array.byte_size(content) + 3
+
+      let lexer = Lexer(rest, start + size)
+      #(lexer, #(Bytes(content), Position(start, size)))
+    }
+
+    "\\" <> rest, _ -> {
+      case rest {
+        // Lex hexadecimal byte sequence
+        "x" <> rest | "X" <> rest -> {
+          let hex_digits = string.slice(rest, 0, 2)
+          let rest = string.drop_start(rest, 2)
+
+          let byte_size = string.byte_size(hex_digits)
+          let lexer = Lexer(rest, start + byte_size + 2)
+          let invalid = #(lexer, #(
+            InvalidByteLiteral("\\x" <> hex_digits),
+            Position(start, 0),
+          ))
+
+          use <- bool.guard(byte_size != 2, invalid)
+
+          int.base_parse(hex_digits, 16)
+          |> result.replace_error(invalid)
+          |> result.map(fn(value) {
+            lex_bytes(rest, bit_array.append(content, <<value>>), init, start)
+          })
+          |> result.unwrap_both
+        }
+        // Lex octet byte sequence
+        _ -> {
+          let octet_digits = string.slice(rest, 0, 3)
+          let rest = string.drop_start(rest, 3)
+
+          let byte_size = string.byte_size(octet_digits)
+          let lexer = Lexer(rest, start + byte_size + 1)
+          let invalid = #(lexer, #(
+            InvalidByteLiteral("\\" <> octet_digits),
+            Position(start, 0),
+          ))
+
+          use <- bool.guard(byte_size != 3, invalid)
+
+          int.base_parse(octet_digits, 8)
+          |> result.replace_error(invalid)
+          |> result.map(fn(value) {
+            lex_bytes(rest, bit_array.append(content, <<value>>), init, start)
+          })
+          |> result.unwrap_both
+        }
+      }
+    }
+
+    _, _ -> {
+      case string.pop_grapheme(input) {
+        Ok(#(g, rest)) -> {
+          let content = bit_array.append(content, <<g:utf8>>)
+          lex_bytes(rest, content, init, start)
+        }
+
+        // End of input, the string is unterminated
+        Error(_) -> {
+          let lexer = Lexer("", start + bit_array.byte_size(content) + 2)
+          #(lexer, #(UnterminatedBytes(content), Position(start, 0)))
         }
       }
     }

@@ -74,6 +74,7 @@ pub fn evaluate_expr(
     p.Atom(p.Float(f)) -> v.Float(f) |> Ok
     p.Atom(p.Null) -> v.Null |> Ok
     p.Atom(p.String(s)) -> v.String(s) |> Ok
+    p.Atom(p.Bytes(s)) -> v.Bytes(s) |> Ok
   }
 }
 

@@ -49,6 +49,7 @@ pub type Atom {
   UInt(Int)
   Float(Float)
   String(String)
+  Bytes(BitArray)
   Bool(Bool)
   Null
 }
@@ -218,7 +219,7 @@ fn expression_unit(
       Ok(#(Some(Atom(Int(n))), tokens))
     }
     [#(t.UInt(value), _), ..tokens] -> {
-      let excl_suffix = string.drop_right(value, 1)
+      let excl_suffix = string.drop_end(value, 1)
       let assert Ok(n) = int.parse(excl_suffix)
       Ok(#(Some(Atom(UInt(n))), tokens))
     }
@@ -228,6 +229,7 @@ fn expression_unit(
     }
     [#(t.String(value), _), ..tokens] ->
       Ok(#(Some(Atom(String(value))), tokens))
+    [#(t.Bytes(value), _), ..tokens] -> Ok(#(Some(Atom(Bytes(value))), tokens))
 
     [#(t.LeftSquare, _), ..tokens] -> {
       let result = list(expression, None, [], tokens)

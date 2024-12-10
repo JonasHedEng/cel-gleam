@@ -1,4 +1,6 @@
+import gleam/bit_array
 import gleam/dict
+import gleam/io
 import gleeunit/should
 
 import interpreter
@@ -178,4 +180,48 @@ pub fn size_test() {
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.Int(6)))
+}
+
+pub fn parse_string_test() {
+  let source = "\"hello\\\"\""
+
+  let assert Ok(program) = interpreter.new(source)
+  let assert Ok(result) =
+    interpreter.execute(program, interpreter.default_context())
+
+  result
+  |> should.equal(value.String("hello\""))
+}
+
+pub fn parse_raw_string_test() {
+  let raw_source = "r\"hello\\\""
+
+  let assert Ok(program) = interpreter.new(raw_source)
+  let assert Ok(result) =
+    interpreter.execute(program, interpreter.default_context())
+
+  result
+  |> should.equal(value.String("hello\\"))
+}
+
+pub fn parse_triple_quoted_string_test() {
+  let source = "'''x''x'''"
+
+  let assert Ok(program) = interpreter.new(source)
+  let assert Ok(result) =
+    interpreter.execute(program, interpreter.default_context())
+
+  result
+  |> should.equal(value.String("x''x"))
+}
+
+pub fn parse_bytes_test() {
+  let source = "b\"\\xFFab\\177c\\x00\""
+
+  let assert Ok(program) = interpreter.new(source)
+  let assert Ok(value.Bytes(result)) =
+    interpreter.execute(program, interpreter.default_context())
+
+  bit_array.inspect(result)
+  |> should.equal(bit_array.inspect(<<255, 97, 98, 127, 99, 00>>))
 }

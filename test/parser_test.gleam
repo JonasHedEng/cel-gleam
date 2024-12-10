@@ -149,24 +149,3 @@ pub fn parse_function_call_test() {
   parsed
   |> should.equal(expected)
 }
-
-pub fn parse_string_test() {
-  let source = "\"hello\\\"\""
-  let assert Ok(parsed) = p.parse(source)
-  parsed
-  |> should.equal(p.Atom(p.String("hello\\\"")))
-}
-
-pub fn parse_raw_string_test() {
-  let raw_source = "r\"hello\\\""
-  let assert Ok(raw_parsed) = p.parse(raw_source)
-  raw_parsed
-  |> should.equal(p.Atom(p.String("hello\\")))
-}
-
-pub fn parse_triple_quoted_string_test() {
-  let source = "'''x''x'''"
-  let assert Ok(parsed) = p.parse(source)
-  parsed
-  |> should.equal(p.Atom(p.String("x''x")))
-}
