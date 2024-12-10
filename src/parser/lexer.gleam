@@ -12,6 +12,7 @@ pub type Token {
   UInt(String)
   Float(String)
   String(String)
+  ByteString(String)
   Bool(Bool)
   Null
 
@@ -174,9 +175,23 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
     "%" <> rest -> #(advance(lexer, rest, 1), token(lexer, Percent, 1))
 
     // Strings
-    "\"" <> rest -> lex_string(rest, "", "\"", lexer.position)
-    "'" <> rest -> lex_string(rest, "", "'", lexer.position)
+    "r\"\"\"" <> rest | "R\"\"\"" <> rest ->
+      lex_string(rest, "", "\"\"\"", lexer.position, True)
+    "r'''" <> rest | "R'''" <> rest ->
+      lex_string(rest, "", "'''", lexer.position, True)
 
+    "r\"" <> rest | "R\"" <> rest ->
+      lex_string(rest, "", "\"", lexer.position, True)
+    "r'" <> rest | "R'" <> rest ->
+      lex_string(rest, "", "'", lexer.position, True)
+
+    "\"\"\"" <> rest -> lex_string(rest, "", "\"\"\"", lexer.position, False)
+    "'''" <> rest -> lex_string(rest, "", "'''", lexer.position, False)
+
+    "\"" <> rest -> lex_string(rest, "", "\"", lexer.position, False)
+    "'" <> rest -> lex_string(rest, "", "'", lexer.position, False)
+
+    // Numbers
     "0b" <> source -> lex_binary(source, "0b", lexer.position)
     "0o" <> source -> lex_octal(source, "0o", lexer.position)
     "0x" <> source -> lex_hexadecimal(source, "0x", lexer.position)
@@ -323,27 +338,42 @@ fn lex_string(
   content: String,
   init: String,
   start: Int,
+  raw: Bool,
 ) -> #(Lexer, #(Token, Position)) {
-  case input, init {
-    // A quote, the string is terminated
-    "\"" <> rest, "\"" | "'" <> rest, "'" -> {
-      let size = byte_size(content) + 2
+  case input, init, raw {
+    "\"\"\"" <> rest, "\"\"\"", _ | "'''" <> rest, "'''", _ -> {
+      let size = case raw {
+        True -> byte_size(content) + 7
+        False -> byte_size(content) + 6
+      }
+
       let lexer = Lexer(rest, start + size)
       #(lexer, #(String(content), Position(start, size)))
     }
 
-    // A backslash escapes the following character
-    "\\" <> rest, _ -> {
+    "\"" <> rest, "\"", _ | "'" <> rest, "'", _ -> {
+      let size = case raw {
+        True -> byte_size(content) + 3
+        False -> byte_size(content) + 2
+      }
+
+      let lexer = Lexer(rest, start + size)
+      #(lexer, #(String(content), Position(start, size)))
+    }
+
+    // A backslash escapes the following character if not a raw string literal
+    "\\" <> rest, _, False -> {
       case string.pop_grapheme(rest) {
-        Error(_) -> lex_string(rest, content <> "\\", init, start)
-        Ok(#(g, rest)) -> lex_string(rest, content <> "\\" <> g, init, start)
+        Error(_) -> lex_string(rest, content <> "\\", init, start, raw)
+        Ok(#(g, rest)) ->
+          lex_string(rest, content <> "\\" <> g, init, start, raw)
       }
     }
 
     // Any other character is content in the string
-    _, _ -> {
+    _, _, _ -> {
       case string.pop_grapheme(input) {
-        Ok(#(g, rest)) -> lex_string(rest, content <> g, init, start)
+        Ok(#(g, rest)) -> lex_string(rest, content <> g, init, start, raw)
 
         // End of input, the string is unterminated
         Error(_) -> {
@@ -355,7 +385,7 @@ fn lex_string(
   }
 }
 
-pub type NumberLexerMode {
+type NumberLexerMode {
   LexInt
   LexFloat
   LexFloatExponent
