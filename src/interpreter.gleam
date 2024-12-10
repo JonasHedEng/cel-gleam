@@ -13,16 +13,13 @@ pub opaque type Program {
 
 pub fn default_context() -> context.Context {
   context.empty()
-  |> context.insert_function("filter", context.Callable(function.filter))
-  |> context.insert_function("map", context.Callable(function.map))
-  |> context.insert_function("all", context.Callable(function.all))
-  |> context.insert_function("size", context.Callable(function.size))
-  |> context.insert_function("has", context.Callable(function.has))
-  |> context.insert_function("exists", context.Callable(function.exists))
-  |> context.insert_function(
-    "exists_one",
-    context.Callable(function.exists_one),
-  )
+  |> context.insert_function("filter", function.filter)
+  |> context.insert_function("map", function.map)
+  |> context.insert_function("all", function.all)
+  |> context.insert_function("size", function.size)
+  |> context.insert_function("has", function.has)
+  |> context.insert_function("exists", function.exists)
+  |> context.insert_function("exists_one", function.exists_one)
 }
 
 pub fn new(with_source source: String) -> Result(Program, parser.Error) {

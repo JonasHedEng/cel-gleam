@@ -208,7 +208,8 @@ fn expression_unit(
   tokens: Tokens,
 ) -> Result(#(Option(Expression), Tokens), Error) {
   use #(parsed, tokens) <- result.try(case tokens {
-    [#(t.Ident(name), _), ..tokens] -> Ok(#(Some(Ident(name)), tokens))
+    [#(t.Dot, _), #(t.Ident(name), _), ..tokens]
+    | [#(t.Ident(name), _), ..tokens] -> Ok(#(Some(Ident(name)), tokens))
 
     [#(t.Bool(value), _), ..tokens] -> {
       Ok(#(Some(Atom(Bool(value))), tokens))

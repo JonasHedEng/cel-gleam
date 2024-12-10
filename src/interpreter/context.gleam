@@ -46,10 +46,14 @@ pub fn insert_variable(ctx: Context, name: String, value: Value) -> Context {
   }
 }
 
-pub fn insert_function(ctx: Context, name: String, func: Callable) -> Context {
+pub fn insert_function(
+  ctx: Context,
+  name: String,
+  func: fn(FunctionContext) -> Result(Value, ExecutionError),
+) -> Context {
   case ctx {
     Root(variables, functions) -> {
-      let new_funcs = dict.insert(functions, name, func)
+      let new_funcs = dict.insert(functions, name, Callable(func))
       Root(variables:, functions: new_funcs)
     }
     Child(variables, parent) -> {

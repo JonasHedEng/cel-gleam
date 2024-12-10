@@ -149,3 +149,13 @@ pub fn parse_function_call_test() {
   parsed
   |> should.equal(expected)
 }
+
+pub fn parse_optional_ident_dot_prefix_test() {
+  let source = ".ident"
+
+  let assert Ok(parsed) = p.parse(source)
+  let expected = p.Ident("ident")
+
+  parsed
+  |> should.equal(expected)
+}
