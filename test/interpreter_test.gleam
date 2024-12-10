@@ -265,3 +265,21 @@ pub fn has_test() {
   eval("has(z.b.c.d)", False)
   eval("has(a.a)", False)
 }
+
+pub fn exists_test() {
+  let source = "[1, 2, 3, 4].exists(x, x < 0)"
+
+  let assert Ok(program) = interpreter.new(source)
+  let ctx = interpreter.default_context()
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.Bool(False)))
+
+  let source = "[1, 2, -3, 4].exists(x, x < 0)"
+
+  let assert Ok(program) = interpreter.new(source)
+  let ctx = interpreter.default_context()
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.Bool(True)))
+}

@@ -200,3 +200,52 @@ pub fn has(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 
   value.Bool(exists)
 }
+
+fn exists_impl(
+  ctx ctx: ctx.Context,
+  ident ident: String,
+  items items: List(Value),
+  expr expr: p.Expression,
+) -> Result(Bool, ExecutionError) {
+  case items {
+    [] -> Ok(False)
+    [item, ..rest] -> {
+      let inner_ctx = ctx.new_inner(ctx) |> ctx.insert_variable(ident, item)
+      use cond <- result.try(evaluate.evaluate_expr(expr, inner_ctx))
+
+      case cond {
+        v.Bool(True) -> Ok(True)
+        v.Bool(False) -> exists_impl(ctx, ident, rest, expr)
+        _ ->
+          Error(error.UnexpectedType(
+            expected: [v.BoolT],
+            got: v.to_type(cond),
+            in_context: "exists condition",
+          ))
+      }
+    }
+  }
+}
+
+pub fn exists(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+  let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
+
+  use #(ident, expr) <- result.try(case args {
+    [p.Ident(ident), expr] -> Ok(#(ident, expr))
+    _ -> Error(error.InvalidFunctionArgs(function: name))
+  })
+
+  case this {
+    Some(v.List(items)) -> {
+      exists_impl(ctx: ctx, ident: ident, items: items, expr: expr)
+      |> result.map(v.Bool)
+    }
+    Some(other) ->
+      Error(error.UnexpectedType(
+        expected: [v.ListT],
+        got: v.to_type(other),
+        in_context: "filter target",
+      ))
+    None -> Error(error.FunctionExpectedThis(function: name))
+  }
+}
