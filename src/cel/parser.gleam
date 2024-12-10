@@ -428,7 +428,7 @@ fn unexpected(tokens: Tokens) -> Result(a, Error) {
   }
 }
 
-pub fn tokenize(source: String) -> Result(Tokens, Error) {
+fn tokenize(source: String) -> Result(Tokens, Error) {
   let lexed =
     t.new(source) |> t.discard_comments |> t.discard_whitespace |> t.lex
 
@@ -446,7 +446,7 @@ pub fn tokenize(source: String) -> Result(Tokens, Error) {
   lexed
 }
 
-pub fn parse_(tokens: Tokens) -> Result(Expression, Error) {
+fn parse_(tokens: Tokens) -> Result(Expression, Error) {
   use #(expr, rest) <- result.try(expression(tokens))
 
   case rest {
