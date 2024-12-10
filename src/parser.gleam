@@ -429,7 +429,8 @@ fn unexpected(tokens: Tokens) -> Result(a, Error) {
 }
 
 pub fn tokenize(source: String) -> Result(Tokens, Error) {
-  let lexed = t.new(source) |> t.lex
+  let lexed =
+    t.new(source) |> t.discard_comments |> t.discard_whitespace |> t.lex
 
   let check_last_token = case list.last(lexed) {
     Ok(#(t.UnexpectedGrapheme(s), t.Position(offset, _))) ->

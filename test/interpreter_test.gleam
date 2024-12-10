@@ -1,6 +1,5 @@
 import gleam/bit_array
 import gleam/dict
-import gleam/io
 import gleeunit/should
 
 import interpreter

@@ -4,8 +4,7 @@
 import gleam/bit_array
 import gleam/bool
 import gleam/int
-import gleam/io
-import gleam/iterator.{type Iterator}
+import gleam/list
 import gleam/result
 import gleam/string
 
@@ -55,8 +54,9 @@ pub type Token {
   Hash
   QuestionMark
 
-  Comment
-  EmptyLine
+  Comment(String)
+  Whitespace(String)
+
   EndOfFile
 
   // Reserved
@@ -75,59 +75,100 @@ pub type Position {
 }
 
 pub opaque type Lexer {
-  Lexer(source: String, position: Int)
+  Lexer(
+    source: String,
+    position: Int,
+    preserve_whitespace: Bool,
+    preserve_comments: Bool,
+  )
 }
 
 pub fn new(source: String) -> Lexer {
-  Lexer(source: source, position: 0)
+  Lexer(
+    source: source,
+    position: 0,
+    preserve_whitespace: True,
+    preserve_comments: True,
+  )
 }
 
-pub fn iterator(lexer: Lexer) -> Iterator(#(Token, Position)) {
-  use lexer <- iterator.unfold(from: lexer)
+pub fn discard_whitespace(lexer: Lexer) -> Lexer {
+  Lexer(..lexer, preserve_whitespace: False)
+}
 
-  case next(lexer) {
-    #(_lexer, #(EndOfFile, _position)) -> iterator.Done
-    #(lexer, token) -> iterator.Next(element: token, accumulator: lexer)
-  }
+pub fn discard_comments(lexer: Lexer) -> Lexer {
+  Lexer(..lexer, preserve_comments: False)
 }
 
 pub fn lex(lexer: Lexer) -> List(#(Token, Position)) {
-  iterator(lexer)
-  |> iterator.to_list()
+  do_lex(lexer, [])
+  |> list.reverse
 }
 
-fn newline(lexer: Lexer, src: String, size: Int) -> #(Lexer, #(Token, Position)) {
-  let start = lexer.position
-  case consume_whitespace(Lexer(src, start + size)) {
-    #(lexer, True) -> #(lexer, #(EmptyLine, Position(start, size)))
-    #(lexer, False) -> next(lexer)
-  }
-}
-
-fn consume_whitespace(lexer: Lexer) -> #(Lexer, Bool) {
-  case lexer.source {
-    "" | "\n" <> _ | "\r\n" <> _ -> #(lexer, True)
-    " " <> rest -> consume_whitespace(Lexer(rest, lexer.position + 1))
-    "\t" <> rest -> consume_whitespace(Lexer(rest, lexer.position + 1))
-    _ -> #(lexer, False)
+fn do_lex(lexer: Lexer, tokens: List(#(Token, Position))) {
+  case next(lexer) {
+    #(_lexer, #(EndOfFile, _)) -> tokens
+    #(lexer, token) -> do_lex(lexer, [token, ..tokens])
   }
 }
 
 fn comment(
-  src: String,
+  lexer: Lexer,
+  content: String,
   start: Int,
-  size: Int,
-  token: Token,
 ) -> #(Lexer, #(Token, Position)) {
-  case src {
-    "\n" <> _ -> #(Lexer(src, start + size), #(token, Position(start, size)))
-    "\r\n" <> _ -> #(Lexer(src, start + size), #(token, Position(start, size)))
-    _ -> {
-      case string.pop_grapheme(src) {
-        Error(_) -> #(Lexer(src, start + size), #(token, Position(start, size)))
-        Ok(#(char, rest)) -> comment(rest, start, size + byte_size(char), token)
+  case lexer.source {
+    "\n" <> _ | "\r\n" <> _ -> {
+      case lexer.preserve_comments {
+        True -> #(lexer, #(
+          Comment(content),
+          Position(start, string.byte_size(content)),
+        ))
+        False -> next(lexer)
       }
     }
+    _ -> {
+      case string.pop_grapheme(lexer.source) {
+        Error(_) ->
+          case lexer.preserve_comments {
+            True -> #(lexer, #(
+              Comment(content),
+              Position(start, string.byte_size(content)),
+            ))
+            False -> next(lexer)
+          }
+        Ok(#(g, rest)) ->
+          advance(lexer, rest, string.byte_size(g))
+          |> comment(content <> g, start)
+      }
+    }
+  }
+}
+
+fn whitespace(
+  lexer: Lexer,
+  content: String,
+  start: Int,
+) -> #(Lexer, #(Token, Position)) {
+  case lexer.source {
+    " " as c <> source
+    | "\t" as c <> source
+    | "\n" as c <> source
+    | "\r" as c <> source ->
+      advance(lexer, source, string.byte_size(c))
+      |> whitespace(content <> c, start)
+
+    _ ->
+      case lexer.preserve_whitespace {
+        False -> next(lexer)
+        True -> {
+          let size = string.byte_size(content)
+          #(lexer, #(
+            Whitespace(content),
+            Position(byte_offset: start, byte_size: size),
+          ))
+        }
+      }
   }
 }
 
@@ -137,15 +178,12 @@ fn byte_size(string: String) -> Int {
 
 pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
   case lexer.source {
-    // Newline
-    "\r\n" <> rest -> newline(lexer, rest, 2)
-    "\n" <> rest -> newline(lexer, rest, 1)
-
     // Whitespace
-    " " <> rest | "\t" <> rest -> next(advance(lexer, rest, 1))
+    " " <> rest | "\t" <> rest | "\n" <> rest | "\r" <> rest ->
+      advance(lexer, rest, 1) |> whitespace(rest, 1)
 
     // Comments
-    "//" <> rest -> comment(rest, lexer.position, 2, Comment)
+    "//" <> rest -> advance(lexer, rest, 2) |> comment(rest, lexer.position)
 
     // Groupings
     "(" <> rest -> #(advance(lexer, rest, 1), token(lexer, LeftParen, 1))
@@ -183,38 +221,56 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
 
     // String/Byte literals
     "r\"\"\"" <> rest | "R\"\"\"" <> rest ->
-      lex_string(rest, "", "\"\"\"", lexer.position, True)
+      advance(lexer, rest, 4) |> lex_string("", "\"\"\"", lexer.position, True)
     "r'''" <> rest | "R'''" <> rest ->
-      lex_string(rest, "", "'''", lexer.position, True)
+      advance(lexer, rest, 4) |> lex_string("", "'''", lexer.position, True)
 
     "r\"" <> rest | "R\"" <> rest ->
-      lex_string(rest, "", "\"", lexer.position, True)
+      advance(lexer, rest, 2) |> lex_string("", "\"", lexer.position, True)
     "r'" <> rest | "R'" <> rest ->
-      lex_string(rest, "", "'", lexer.position, True)
+      advance(lexer, rest, 2) |> lex_string("", "'", lexer.position, True)
 
-    "b\"" <> rest -> lex_bytes(rest, <<>>, "\"", lexer.position)
+    "b\"" <> rest ->
+      advance(lexer, rest, 2) |> lex_bytes(<<>>, "\"", lexer.position)
 
-    "\"\"\"" <> rest -> lex_string(rest, "", "\"\"\"", lexer.position, False)
-    "'''" <> rest -> lex_string(rest, "", "'''", lexer.position, False)
+    "\"\"\"" <> rest ->
+      advance(lexer, rest, 3) |> lex_string("", "\"\"\"", lexer.position, False)
+    "'''" <> rest ->
+      advance(lexer, rest, 3) |> lex_string("", "'''", lexer.position, False)
 
-    "\"" <> rest -> lex_string(rest, "", "\"", lexer.position, False)
-    "'" <> rest -> lex_string(rest, "", "'", lexer.position, False)
+    "\"" <> rest ->
+      advance(lexer, rest, 1) |> lex_string("", "\"", lexer.position, False)
+    "'" <> rest ->
+      advance(lexer, rest, 1) |> lex_string("", "'", lexer.position, False)
 
     // Numbers
-    "0b" <> source -> lex_binary(source, "0b", lexer.position)
-    "0o" <> source -> lex_octal(source, "0o", lexer.position)
-    "0x" <> source -> lex_hexadecimal(source, "0x", lexer.position)
+    "0b" <> source ->
+      advance(lexer, source, 1) |> lex_binary("0b", lexer.position)
+    "0o" <> source ->
+      advance(lexer, source, 1) |> lex_octal("0o", lexer.position)
+    "0x" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal("0x", lexer.position)
 
-    "0" <> source -> lex_number(source, "0", LexInt, lexer.position)
-    "1" <> source -> lex_number(source, "1", LexInt, lexer.position)
-    "2" <> source -> lex_number(source, "2", LexInt, lexer.position)
-    "3" <> source -> lex_number(source, "3", LexInt, lexer.position)
-    "4" <> source -> lex_number(source, "4", LexInt, lexer.position)
-    "5" <> source -> lex_number(source, "5", LexInt, lexer.position)
-    "6" <> source -> lex_number(source, "6", LexInt, lexer.position)
-    "7" <> source -> lex_number(source, "7", LexInt, lexer.position)
-    "8" <> source -> lex_number(source, "8", LexInt, lexer.position)
-    "9" <> source -> lex_number(source, "9", LexInt, lexer.position)
+    "0" <> source ->
+      advance(lexer, source, 1) |> lex_number("0", LexInt, lexer.position)
+    "1" <> source ->
+      advance(lexer, source, 1) |> lex_number("1", LexInt, lexer.position)
+    "2" <> source ->
+      advance(lexer, source, 1) |> lex_number("2", LexInt, lexer.position)
+    "3" <> source ->
+      advance(lexer, source, 1) |> lex_number("3", LexInt, lexer.position)
+    "4" <> source ->
+      advance(lexer, source, 1) |> lex_number("4", LexInt, lexer.position)
+    "5" <> source ->
+      advance(lexer, source, 1) |> lex_number("5", LexInt, lexer.position)
+    "6" <> source ->
+      advance(lexer, source, 1) |> lex_number("6", LexInt, lexer.position)
+    "7" <> source ->
+      advance(lexer, source, 1) |> lex_number("7", LexInt, lexer.position)
+    "8" <> source ->
+      advance(lexer, source, 1) |> lex_number("8", LexInt, lexer.position)
+    "9" <> source ->
+      advance(lexer, source, 1) |> lex_number("9", LexInt, lexer.position)
 
     // Keywords & Literals
     // Ident
@@ -300,7 +356,10 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
       }
 
       let size = byte_size(ident)
-      #(Lexer(rest, lexer.position + size), token(lexer, as_token, size))
+      #(
+        Lexer(..lexer, source: rest, position: lexer.position + size),
+        token(lexer, as_token, size),
+      )
     }
 
     _ -> {
@@ -334,7 +393,16 @@ pub fn take_content(
 }
 
 fn advance(lexer: Lexer, source: String, offset: Int) -> Lexer {
-  Lexer(source: source, position: lexer.position + offset)
+  Lexer(..lexer, source: source, position: lexer.position + offset)
+}
+
+fn advanced(
+  token: #(Token, Position),
+  lexer: Lexer,
+  source: String,
+  offset: Int,
+) -> #(Lexer, #(Token, Position)) {
+  #(advance(lexer, source, offset), token)
 }
 
 fn token(lexer: Lexer, token: Token, size: Int) -> #(Token, Position) {
@@ -342,21 +410,20 @@ fn token(lexer: Lexer, token: Token, size: Int) -> #(Token, Position) {
 }
 
 fn lex_string(
-  input: String,
+  lexer: Lexer,
   content: String,
   init: String,
   start: Int,
   raw: Bool,
 ) -> #(Lexer, #(Token, Position)) {
-  case input, init, raw {
+  case lexer.source, init, raw {
     "\"\"\"" <> rest, "\"\"\"", _ | "'''" <> rest, "'''", _ -> {
       let size = case raw {
         True -> byte_size(content) + 7
         False -> byte_size(content) + 6
       }
 
-      let lexer = Lexer(rest, start + size)
-      #(lexer, #(String(content), Position(start, size)))
+      #(String(content), Position(start, size)) |> advanced(lexer, rest, 3)
     }
 
     "\"" <> rest, "\"", _ | "'" <> rest, "'", _ -> {
@@ -365,30 +432,35 @@ fn lex_string(
         False -> byte_size(content) + 2
       }
 
-      let lexer = Lexer(rest, start + size)
-      #(lexer, #(String(content), Position(start, size)))
+      #(String(content), Position(start, size)) |> advanced(lexer, rest, 1)
     }
 
     // A backslash escapes the following character if not a raw string literal
     "\\" <> rest, _, False -> {
       case string.pop_grapheme(rest) {
-        Error(_) -> lex_string(rest, content <> "\\", init, start, raw)
-        Ok(#(g, rest)) ->
+        Error(_) ->
+          advance(lexer, rest, 1)
+          |> lex_string(content <> "\\", init, start, raw)
+        Ok(#(g, rest)) -> {
+          // TODO: Is it too naive to perform the escaping here?
           // lex_string(rest, content <> "\\" <> g, init, start, raw)
 
-          // TODO: Is it too naive to perform the escaping here?
-          lex_string(rest, content <> g, init, start, raw)
+          let offset = string.byte_size(g) + 1
+          advance(lexer, rest, offset)
+          |> lex_string(content <> g, init, start, raw)
+        }
       }
     }
 
     // Any other character is content in the string
     _, _, _ -> {
-      case string.pop_grapheme(input) {
-        Ok(#(g, rest)) -> lex_string(rest, content <> g, init, start, raw)
+      case string.pop_grapheme(lexer.source) {
+        Ok(#(g, rest)) ->
+          advance(lexer, rest, string.byte_size(g))
+          |> lex_string(content <> g, init, start, raw)
 
         // End of input, the string is unterminated
         Error(_) -> {
-          let lexer = Lexer("", start + byte_size(content) + 1)
           #(lexer, #(UnterminatedString(content), Position(start, 0)))
         }
       }
@@ -397,12 +469,12 @@ fn lex_string(
 }
 
 fn lex_bytes(
-  input: String,
+  lexer: Lexer,
   content: BitArray,
   init: String,
   start: Int,
 ) -> #(Lexer, #(Token, Position)) {
-  case input, init {
+  case lexer.source, init {
     // "\"\"\"" <> rest, "\"\"\"" | "'''" <> rest, "'''" -> {
     //   let size = case raw {
     //     True -> byte_size(content) + 7
@@ -414,8 +486,7 @@ fn lex_bytes(
     "\"" <> rest, "\"" | "'" <> rest, "'" -> {
       let size = bit_array.byte_size(content) + 3
 
-      let lexer = Lexer(rest, start + size)
-      #(lexer, #(Bytes(content), Position(start, size)))
+      #(Bytes(content), Position(start, size)) |> advanced(lexer, rest, 3)
     }
 
     "\\" <> rest, _ -> {
@@ -426,7 +497,7 @@ fn lex_bytes(
           let rest = string.drop_start(rest, 2)
 
           let byte_size = string.byte_size(hex_digits)
-          let lexer = Lexer(rest, start + byte_size + 2)
+          let lexer = advance(lexer, rest, byte_size + 2)
           let invalid = #(lexer, #(
             InvalidByteLiteral("\\x" <> hex_digits),
             Position(start, 0),
@@ -437,7 +508,7 @@ fn lex_bytes(
           int.base_parse(hex_digits, 16)
           |> result.replace_error(invalid)
           |> result.map(fn(value) {
-            lex_bytes(rest, bit_array.append(content, <<value>>), init, start)
+            lex_bytes(lexer, bit_array.append(content, <<value>>), init, start)
           })
           |> result.unwrap_both
         }
@@ -447,7 +518,7 @@ fn lex_bytes(
           let rest = string.drop_start(rest, 3)
 
           let byte_size = string.byte_size(octet_digits)
-          let lexer = Lexer(rest, start + byte_size + 1)
+          let lexer = advance(lexer, rest, byte_size + 1)
           let invalid = #(lexer, #(
             InvalidByteLiteral("\\" <> octet_digits),
             Position(start, 0),
@@ -458,7 +529,7 @@ fn lex_bytes(
           int.base_parse(octet_digits, 8)
           |> result.replace_error(invalid)
           |> result.map(fn(value) {
-            lex_bytes(rest, bit_array.append(content, <<value>>), init, start)
+            lex_bytes(lexer, bit_array.append(content, <<value>>), init, start)
           })
           |> result.unwrap_both
         }
@@ -466,17 +537,15 @@ fn lex_bytes(
     }
 
     _, _ -> {
-      case string.pop_grapheme(input) {
+      case string.pop_grapheme(lexer.source) {
         Ok(#(g, rest)) -> {
           let content = bit_array.append(content, <<g:utf8>>)
-          lex_bytes(rest, content, init, start)
+          advance(lexer, rest, string.byte_size(g))
+          |> lex_bytes(content, init, start)
         }
 
         // End of input, the string is unterminated
-        Error(_) -> {
-          let lexer = Lexer("", start + bit_array.byte_size(content) + 2)
-          #(lexer, #(UnterminatedBytes(content), Position(start, 0)))
-        }
+        Error(_) -> #(lexer, #(UnterminatedBytes(content), Position(start, 0)))
       }
     }
   }
@@ -489,36 +558,49 @@ type NumberLexerMode {
 }
 
 fn lex_number(
-  input: String,
+  lexer: Lexer,
   content: String,
   mode: NumberLexerMode,
   start: Int,
 ) -> #(Lexer, #(Token, Position)) {
-  case input {
+  case lexer.source {
     // A dot, the number is a float
     "." <> rest if mode == LexInt ->
-      lex_number(rest, content <> ".", LexFloat, start)
+      advance(lexer, rest, 1) |> lex_number(content <> ".", LexFloat, start)
 
     "e-" <> rest if mode == LexFloat ->
-      lex_number(rest, content <> "e-", LexFloatExponent, start)
+      advance(lexer, rest, 1)
+      |> lex_number(content <> "e-", LexFloatExponent, start)
     "e" <> rest if mode == LexFloat ->
-      lex_number(rest, content <> "e", LexFloatExponent, start)
+      advance(lexer, rest, 1)
+      |> lex_number(content <> "e", LexFloatExponent, start)
 
-    "_" <> source -> lex_number(source, content <> "_", mode, start)
-    "0" <> source -> lex_number(source, content <> "0", mode, start)
-    "1" <> source -> lex_number(source, content <> "1", mode, start)
-    "2" <> source -> lex_number(source, content <> "2", mode, start)
-    "3" <> source -> lex_number(source, content <> "3", mode, start)
-    "4" <> source -> lex_number(source, content <> "4", mode, start)
-    "5" <> source -> lex_number(source, content <> "5", mode, start)
-    "6" <> source -> lex_number(source, content <> "6", mode, start)
-    "7" <> source -> lex_number(source, content <> "7", mode, start)
-    "8" <> source -> lex_number(source, content <> "8", mode, start)
-    "9" <> source -> lex_number(source, content <> "9", mode, start)
+    "_" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "_", mode, start)
+    "0" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "0", mode, start)
+    "1" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "1", mode, start)
+    "2" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "2", mode, start)
+    "3" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "3", mode, start)
+    "4" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "4", mode, start)
+    "5" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "5", mode, start)
+    "6" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "6", mode, start)
+    "7" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "7", mode, start)
+    "8" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "8", mode, start)
+    "9" <> source ->
+      advance(lexer, source, 1) |> lex_number(content <> "9", mode, start)
 
     "u" as suffix <> source | "U" as suffix <> source if mode == LexInt -> {
       let size = byte_size(content <> suffix)
-      let lexer = Lexer(source, start + size)
+      let lexer = advance(lexer, source, size)
       let token = UInt(content <> suffix)
 
       #(lexer, #(token, Position(start, size)))
@@ -527,91 +609,122 @@ fn lex_number(
     // Anything else and the number is terminated
     source -> {
       let size = byte_size(content)
-      let lexer = Lexer(source, start + size)
 
       let token = case mode {
         LexInt -> Int(content)
         LexFloat | LexFloatExponent -> Float(content)
       }
 
-      #(lexer, #(token, Position(start, size)))
+      #(token, Position(start, size)) |> advanced(lexer, source, size)
     }
   }
 }
 
 fn lex_binary(
-  source: String,
+  lexer: Lexer,
   content: String,
   start: Int,
 ) -> #(Lexer, #(Token, Position)) {
-  case source {
-    "_" <> source -> lex_binary(source, content <> "_", start)
-    "0" <> source -> lex_binary(source, content <> "0", start)
-    "1" <> source -> lex_binary(source, content <> "1", start)
+  case lexer.source {
+    "_" <> source ->
+      advance(lexer, source, 1) |> lex_binary(content <> "_", start)
+    "0" <> source ->
+      advance(lexer, source, 1) |> lex_binary(content <> "0", start)
+    "1" <> source ->
+      advance(lexer, source, 1) |> lex_binary(content <> "1", start)
     source -> {
       let size = byte_size(content)
-      let lexer = Lexer(source, start + size)
-      #(lexer, #(Int(content), Position(start, size)))
+      #(Int(content), Position(start, size)) |> advanced(lexer, source, size)
     }
   }
 }
 
 fn lex_octal(
-  source: String,
+  lexer: Lexer,
   content: String,
   start: Int,
 ) -> #(Lexer, #(Token, Position)) {
-  case source {
-    "_" <> source -> lex_octal(source, content <> "_", start)
-    "0" <> source -> lex_octal(source, content <> "0", start)
-    "1" <> source -> lex_octal(source, content <> "1", start)
-    "2" <> source -> lex_octal(source, content <> "2", start)
-    "3" <> source -> lex_octal(source, content <> "3", start)
-    "4" <> source -> lex_octal(source, content <> "4", start)
-    "5" <> source -> lex_octal(source, content <> "5", start)
-    "6" <> source -> lex_octal(source, content <> "6", start)
-    "7" <> source -> lex_octal(source, content <> "7", start)
+  case lexer.source {
+    "_" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "_", start)
+    "0" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "0", start)
+    "1" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "1", start)
+    "2" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "2", start)
+    "3" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "3", start)
+    "4" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "4", start)
+    "5" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "5", start)
+    "6" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "6", start)
+    "7" <> source ->
+      advance(lexer, source, 1) |> lex_octal(content <> "7", start)
     source -> {
       let size = byte_size(content)
-      let lexer = Lexer(source, start + size)
-      #(lexer, #(Int(content), Position(start, size)))
+      #(Int(content), Position(start, size)) |> advanced(lexer, source, size)
     }
   }
 }
 
 fn lex_hexadecimal(
-  source: String,
+  lexer: Lexer,
   content: String,
   start: Int,
 ) -> #(Lexer, #(Token, Position)) {
-  case source {
-    "_" <> source -> lex_hexadecimal(source, content <> "_", start)
-    "0" <> source -> lex_hexadecimal(source, content <> "0", start)
-    "1" <> source -> lex_hexadecimal(source, content <> "1", start)
-    "2" <> source -> lex_hexadecimal(source, content <> "2", start)
-    "3" <> source -> lex_hexadecimal(source, content <> "3", start)
-    "4" <> source -> lex_hexadecimal(source, content <> "4", start)
-    "5" <> source -> lex_hexadecimal(source, content <> "5", start)
-    "6" <> source -> lex_hexadecimal(source, content <> "6", start)
-    "7" <> source -> lex_hexadecimal(source, content <> "7", start)
-    "8" <> source -> lex_hexadecimal(source, content <> "8", start)
-    "9" <> source -> lex_hexadecimal(source, content <> "9", start)
-    "A" <> source -> lex_hexadecimal(source, content <> "A", start)
-    "B" <> source -> lex_hexadecimal(source, content <> "B", start)
-    "C" <> source -> lex_hexadecimal(source, content <> "C", start)
-    "D" <> source -> lex_hexadecimal(source, content <> "D", start)
-    "E" <> source -> lex_hexadecimal(source, content <> "E", start)
-    "F" <> source -> lex_hexadecimal(source, content <> "F", start)
-    "a" <> source -> lex_hexadecimal(source, content <> "a", start)
-    "b" <> source -> lex_hexadecimal(source, content <> "b", start)
-    "c" <> source -> lex_hexadecimal(source, content <> "c", start)
-    "d" <> source -> lex_hexadecimal(source, content <> "d", start)
-    "e" <> source -> lex_hexadecimal(source, content <> "e", start)
-    "f" <> source -> lex_hexadecimal(source, content <> "f", start)
+  case lexer.source {
+    "_" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "_", start)
+    "0" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "0", start)
+    "1" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "1", start)
+    "2" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "2", start)
+    "3" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "3", start)
+    "4" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "4", start)
+    "5" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "5", start)
+    "6" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "6", start)
+    "7" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "7", start)
+    "8" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "8", start)
+    "9" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "9", start)
+    "A" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "A", start)
+    "B" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "B", start)
+    "C" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "C", start)
+    "D" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "D", start)
+    "E" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "E", start)
+    "F" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "F", start)
+    "a" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "a", start)
+    "b" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "b", start)
+    "c" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "c", start)
+    "d" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "d", start)
+    "e" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "e", start)
+    "f" <> source ->
+      advance(lexer, source, 1) |> lex_hexadecimal(content <> "f", start)
     source -> {
       let size = byte_size(content)
-      let lexer = Lexer(source, start + size)
-      #(lexer, #(Int(content), Position(start, size)))
+      #(Int(content), Position(start, size)) |> advanced(lexer, source, size)
     }
   }
 }
