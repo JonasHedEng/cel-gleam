@@ -65,14 +65,14 @@ gleam test  # Run the tests
 ## State
 
 This library is still very early in its development. The current state and planned future work:
-[x] Lexing
-[x] Parsing
-[x] Expression evaluation
-[x] Variable context resolution
-[x] Functions/macros
-[ ] Context provision through Dynamic
-[ ] Value → JSON
-[ ] Type checking
-[ ] Field inits (`ident{"a": 5}`)
-[ ] Duration + Timestamp
-[ ] (Maybe) Serializable AST
+- [x] Lexing
+- [x] Parsing
+- [x] Expression evaluation
+- [x] Variable context resolution
+- [x] Functions/macros
+- [ ] Context provision through Dynamic
+- [ ] Value → JSON
+- [ ] Type checking
+- [ ] Field inits (`ident{"a": 5}`)
+- [ ] Duration + Timestamp
+- [ ] (Maybe) Serializable AST
