@@ -19,7 +19,10 @@ pub fn default_context() -> context.Context {
   |> context.insert_function("size", context.Callable(function.size))
   |> context.insert_function("has", context.Callable(function.has))
   |> context.insert_function("exists", context.Callable(function.exists))
-  // |> context.insert_function("exists_one", context.Callable(function.exists_one))
+  |> context.insert_function(
+    "exists_one",
+    context.Callable(function.exists_one),
+  )
 }
 
 pub fn new(with_source source: String) -> Result(Program, parser.Error) {

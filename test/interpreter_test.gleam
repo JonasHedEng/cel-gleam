@@ -283,3 +283,19 @@ pub fn exists_test() {
   interpreter.execute(program, ctx)
   |> should.equal(Ok(value.Bool(True)))
 }
+
+pub fn exists_one_test() {
+  let ctx = interpreter.default_context()
+
+  let eval = fn(source, expected) {
+    let assert Ok(program) = interpreter.new(source)
+    let assert Ok(value.Bool(value)) = interpreter.execute(program, ctx)
+    value |> should.equal(expected)
+  }
+
+  eval("[].exists_one(x, x > 3)", False)
+  eval("[1].exists_one(x, x > 3)", False)
+  eval("[5].exists_one(x, x > 3)", True)
+  eval("[5, 3, 1].exists_one(x, x > 3)", True)
+  eval("[5, 3, 7].exists_one(x, x > 3)", False)
+}

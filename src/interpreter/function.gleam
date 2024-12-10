@@ -153,7 +153,7 @@ pub fn all(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
       Error(error.UnexpectedType(
         expected: [v.ListT],
         got: v.to_type(other),
-        in_context: "filter target",
+        in_context: "all target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))
   }
@@ -177,7 +177,7 @@ pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
       Error(error.UnexpectedType(
         expected: [v.ListT, v.MapT, v.StringT],
         got: v.to_type(other),
-        in_context: "filter target",
+        in_context: "size target",
       ))
   }
 }
@@ -244,7 +244,64 @@ pub fn exists(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
       Error(error.UnexpectedType(
         expected: [v.ListT],
         got: v.to_type(other),
-        in_context: "filter target",
+        in_context: "exists target",
+      ))
+    None -> Error(error.FunctionExpectedThis(function: name))
+  }
+}
+
+fn exists_one_impl(
+  ctx ctx: ctx.Context,
+  ident ident: String,
+  items items: List(Value),
+  expr expr: p.Expression,
+  found found: Bool,
+) -> Result(Bool, ExecutionError) {
+  case items {
+    [] -> Ok(found)
+    [item, ..rest] -> {
+      let inner_ctx = ctx.new_inner(ctx) |> ctx.insert_variable(ident, item)
+      use cond <- result.try(evaluate.evaluate_expr(expr, inner_ctx))
+
+      case cond, found {
+        v.Bool(True), True -> Ok(False)
+        v.Bool(True), False -> exists_one_impl(ctx, ident, rest, expr, True)
+        v.Bool(False), _ -> exists_one_impl(ctx, ident, rest, expr, found)
+        _, _ ->
+          Error(error.UnexpectedType(
+            expected: [v.BoolT],
+            got: v.to_type(cond),
+            in_context: "exists one condition",
+          ))
+      }
+    }
+  }
+}
+
+pub fn exists_one(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+  let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
+
+  use #(ident, expr) <- result.try(case args {
+    [p.Ident(ident), expr] -> Ok(#(ident, expr))
+    _ -> Error(error.InvalidFunctionArgs(function: name))
+  })
+
+  case this {
+    Some(v.List(items)) -> {
+      exists_one_impl(
+        ctx: ctx,
+        ident: ident,
+        items: items,
+        expr: expr,
+        found: False,
+      )
+      |> result.map(v.Bool)
+    }
+    Some(other) ->
+      Error(error.UnexpectedType(
+        expected: [v.ListT],
+        got: v.to_type(other),
+        in_context: "exists one target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))
   }
