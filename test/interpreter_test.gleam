@@ -225,3 +225,43 @@ pub fn parse_bytes_test() {
   bit_array.inspect(result)
   |> should.equal(bit_array.inspect(<<255, 97, 98, 127, 99, 00>>))
 }
+
+pub fn has_test() {
+  let obj =
+    value.Map(
+      [
+        #(
+          value.KeyString("b"),
+          value.Map(
+            [
+              #(
+                value.KeyString("c"),
+                value.Map(
+                  [#(value.KeyString("d"), value.Int(1))]
+                  |> dict.from_list,
+                ),
+              ),
+            ]
+            |> dict.from_list,
+          ),
+        ),
+      ]
+      |> dict.from_list,
+    )
+
+  let ctx = interpreter.default_context() |> context.insert_variable("a", obj)
+
+  let eval = fn(source, expected) {
+    let assert Ok(program) = interpreter.new(source)
+    let assert Ok(value.Bool(value)) = interpreter.execute(program, ctx)
+    value |> should.equal(expected)
+  }
+
+  eval("has(a)", True)
+  eval("has(a.b)", True)
+  eval("has(a.b.c.d)", True)
+  eval("has(a.b.d)", False)
+  eval("has(a.b.b.d)", False)
+  eval("has(z.b.c.d)", False)
+  eval("has(a.a)", False)
+}

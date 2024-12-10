@@ -181,3 +181,22 @@ pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
       ))
   }
 }
+
+pub fn has(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+  let ctx.FunctionContext(name: name, ctx: ctx, this: _this, args: args) = ftx
+
+  // TODO: Ensure `this` isn't set
+
+  use exists <- result.map(case args {
+    [p.Ident(_) as expr] | [p.Member(_, p.Attribute(_)) as expr] ->
+      case evaluate.evaluate_expr(expr, ctx) {
+        Ok(_) -> Ok(True)
+        Error(error.ContextError(error.NoSuchKey(_)))
+        | Error(error.ContextError(error.UnknownIdentifier(_))) -> Ok(False)
+        Error(err) -> Error(err)
+      }
+    _ -> Error(error.InvalidFunctionArgs(function: name))
+  })
+
+  value.Bool(exists)
+}

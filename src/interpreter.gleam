@@ -17,6 +17,7 @@ pub fn default_context() -> context.Context {
   |> context.insert_function("map", context.Callable(function.map))
   |> context.insert_function("all", context.Callable(function.all))
   |> context.insert_function("size", context.Callable(function.size))
+  |> context.insert_function("has", context.Callable(function.has))
 }
 
 pub fn new(with_source source: String) -> Result(Program, parser.Error) {
