@@ -6,11 +6,11 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
-import interpreter/context as ctx
-import interpreter/error.{type ExecutionError}
-import interpreter/value.{type Value}
-import interpreter/value as v
-import parser as p
+import cel/interpreter/context as ctx
+import cel/interpreter/error.{type ExecutionError}
+import cel/interpreter/value.{type Value}
+import cel/interpreter/value as v
+import cel/parser as p
 
 pub fn evaluate_expr(
   expr: p.Expression,

@@ -1,11 +1,11 @@
 import gleam/result
 
-import interpreter/context
-import interpreter/error.{type ExecutionError}
-import interpreter/evaluate
-import interpreter/function
-import interpreter/value.{type Value}
-import parser
+import cel/interpreter/context
+import cel/interpreter/error.{type ExecutionError}
+import cel/interpreter/evaluate
+import cel/interpreter/function
+import cel/interpreter/value.{type Value}
+import cel/parser
 
 pub opaque type Program {
   Program(expr: parser.Expression)

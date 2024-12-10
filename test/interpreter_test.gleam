@@ -2,9 +2,9 @@ import gleam/bit_array
 import gleam/dict
 import gleeunit/should
 
-import interpreter
-import interpreter/context
-import interpreter/value
+import cel/interpreter
+import cel/interpreter/context
+import cel/interpreter/value
 
 pub fn resolve_and_compute_test() {
   let source = "a + 5u"

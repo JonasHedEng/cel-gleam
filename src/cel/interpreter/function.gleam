@@ -4,12 +4,12 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
-import interpreter/context as ctx
-import interpreter/error.{type ExecutionError}
-import interpreter/evaluate
-import interpreter/value as v
-import interpreter/value.{type Value}
-import parser as p
+import cel/interpreter/context as ctx
+import cel/interpreter/error.{type ExecutionError}
+import cel/interpreter/evaluate
+import cel/interpreter/value as v
+import cel/interpreter/value.{type Value}
+import cel/parser as p
 
 fn filter_impl(
   ctx ctx: ctx.Context,

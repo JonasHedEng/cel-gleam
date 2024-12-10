@@ -2,7 +2,7 @@ import gleam/list
 import gleam/option
 import gleeunit/should
 
-import parser as p
+import cel/parser as p
 
 pub fn parse_list_test() {
   let list_src = "[1,2,3]"

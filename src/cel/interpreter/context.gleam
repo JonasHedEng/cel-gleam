@@ -2,9 +2,9 @@ import gleam/dict.{type Dict}
 import gleam/option.{type Option}
 import gleam/result
 
-import interpreter/error.{type ContextError, type ExecutionError}
-import interpreter/value.{type Value}
-import parser.{type Expression}
+import cel/interpreter/error.{type ContextError, type ExecutionError}
+import cel/interpreter/value.{type Value}
+import cel/parser.{type Expression}
 
 pub type FunctionContext {
   FunctionContext(

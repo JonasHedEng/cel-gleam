@@ -8,7 +8,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 
-import parser/lexer as t
+import cel/parser/lexer as t
 
 pub type BinaryOp {
   Arithmetic(Arithmetic)

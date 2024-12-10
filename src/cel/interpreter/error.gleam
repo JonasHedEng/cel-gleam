@@ -1,5 +1,5 @@
-import interpreter/value.{type Type, type Value}
-import parser
+import cel/interpreter/value.{type Type, type Value}
+import cel/parser
 
 pub type ContextError {
   UnknownIdentifier(String)
