@@ -176,7 +176,7 @@ fn byte_size(string: String) -> Int {
   bit_array.byte_size(<<string:utf8>>)
 }
 
-pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
+fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
   case lexer.source {
     // Whitespace
     " " <> rest | "\t" <> rest | "\n" <> rest | "\r" <> rest ->
@@ -376,7 +376,7 @@ pub fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
   }
 }
 
-pub fn take_content(
+fn take_content(
   source: String,
   content: String,
   predicate: fn(String) -> Bool,
@@ -729,7 +729,7 @@ fn lex_hexadecimal(
   }
 }
 
-pub fn is_ident_grapheme(grapheme: String) -> Bool {
+fn is_ident_grapheme(grapheme: String) -> Bool {
   case grapheme {
     "a"
     | "b"
