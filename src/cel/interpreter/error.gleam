@@ -1,3 +1,5 @@
+import gleam/dynamic
+
 import cel/interpreter/value.{type Type, type Value}
 import cel/parser
 
@@ -6,6 +8,8 @@ pub type ContextError {
   UnknownFunction(String)
   NoSuchKey(parser.Member)
   InvalidMemberParent(parent_type: Type, member: parser.Member)
+
+  Decode(dynamic.DecodeErrors)
 }
 
 pub type ExecutionError {

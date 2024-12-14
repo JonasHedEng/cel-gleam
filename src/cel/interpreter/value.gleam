@@ -1,5 +1,8 @@
 import gleam/dict
+import gleam/dynamic
 import gleam/option.{type Option}
+
+import decode/zero
 
 pub type Key {
   KeyInt(Int)
@@ -57,4 +60,30 @@ pub type Type {
   BytesT
   BoolT
   NullT
+}
+
+fn key_decoder() -> zero.Decoder(Key) {
+  zero.one_of(zero.int |> zero.map(KeyInt), [
+    zero.string |> zero.map(KeyString),
+    zero.bool |> zero.map(KeyBool),
+  ])
+}
+
+fn value_decoder() -> zero.Decoder(Value) {
+  zero.one_of(zero.int |> zero.map(Int), [
+    zero.float |> zero.map(Float),
+    zero.bool |> zero.map(Bool),
+    zero.string |> zero.map(String),
+    zero.bit_array |> zero.map(Bytes),
+    zero.list(zero.lazy(value_decoder)) |> zero.map(List),
+    zero.dict(key_decoder(), zero.lazy(value_decoder)) |> zero.map(Map),
+    zero.optional(zero.lazy(value_decoder))
+      |> zero.map(fn(opt) { option.unwrap(opt, Null) }),
+  ])
+}
+
+pub fn decode(
+  value input: dynamic.Dynamic,
+) -> Result(Value, List(dynamic.DecodeError)) {
+  zero.run(input, value_decoder())
 }

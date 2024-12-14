@@ -1,8 +1,13 @@
 import gleam/dict.{type Dict}
+import gleam/dynamic
+import gleam/io
+import gleam/list
 import gleam/option.{type Option}
 import gleam/result
 
-import cel/interpreter/error.{type ContextError, type ExecutionError}
+import decode/zero
+
+import cel/interpreter/error.{type ContextError, type ExecutionError, Decode}
 import cel/interpreter/value.{type Value}
 import cel/parser.{type Expression}
 
@@ -31,6 +36,19 @@ pub fn empty() -> Context {
 pub fn new_inner(ctx: Context) -> Context {
   let parent = ctx
   Child(variables: dict.new(), parent:)
+}
+
+pub fn try_insert_variable(
+  ctx: Context,
+  name: String,
+  input: dynamic.Dynamic,
+) -> Result(Context, ContextError) {
+  use value <- result.map(
+    value.decode(input)
+    |> result.map_error(Decode),
+  )
+
+  insert_variable(ctx, name, value)
 }
 
 pub fn insert_variable(ctx: Context, name: String, value: Value) -> Context {
