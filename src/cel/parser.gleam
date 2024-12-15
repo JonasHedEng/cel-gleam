@@ -54,24 +54,24 @@ pub type Atom {
   Null
 }
 
-pub type Member(a) {
+pub type Member {
   Attribute(String)
-  Index(Expression(a))
+  Index(Expression)
   // Fields(List(#(String, Expression)))
 }
 
-pub type Expression(a) {
-  BinaryOperation(Expression(a), BinaryOp, Expression(a))
-  Unary(UnaryOp, Expression(a))
+pub type Expression {
+  BinaryOperation(Expression, BinaryOp, Expression)
+  Unary(UnaryOp, Expression)
 
-  Ternary(Expression(a), Expression(a), Expression(a))
+  Ternary(Expression, Expression, Expression)
 
-  List(List(Expression(a)))
-  Map(List(#(Expression(a), Expression(a))))
+  List(List(Expression))
+  Map(List(#(Expression, Expression)))
 
-  Member(Expression(a), Member(a))
+  Member(Expression, Member)
 
-  FunctionCall(String, option.Option(Expression(a)), List(Expression(a)))
+  FunctionCall(String, option.Option(Expression), List(Expression))
   Atom(Atom)
   Ident(String)
 }
@@ -102,15 +102,15 @@ fn binary_operator(token: t.Token) -> Result(BinaryOp, Nil) {
 type Tokens =
   List(#(t.Token, t.Position))
 
-fn expression(tokens: Tokens) -> Result(#(Expression(a), Tokens), Error) {
+fn expression(tokens: Tokens) -> Result(#(Expression, Tokens), Error) {
   expression_loop(tokens, [], [])
 }
 
 fn expression_loop(
   tokens: Tokens,
   operators: List(BinaryOp),
-  values: List(Expression(a)),
-) -> Result(#(Expression(a), List(#(t.Token, t.Position))), Error) {
+  values: List(Expression),
+) -> Result(#(Expression, List(#(t.Token, t.Position))), Error) {
   use #(expr, tokens) <- result.try(expression_unit(tokens))
 
   let expr = case expr {
@@ -166,8 +166,8 @@ fn expression_loop(
 fn handle_operator(
   next: Option(BinaryOp),
   operators: List(BinaryOp),
-  values: List(Expression(a)),
-) -> #(Option(Expression(a)), List(BinaryOp), List(Expression(a))) {
+  values: List(Expression),
+) -> #(Option(Expression), List(BinaryOp), List(Expression)) {
   case next, operators, values {
     Some(operator), [], _ -> #(None, [operator], values)
 
@@ -206,7 +206,7 @@ fn precedence(operator: BinaryOp) -> Int {
 
 fn expression_unit(
   tokens: Tokens,
-) -> Result(#(Option(Expression(a)), Tokens), Error) {
+) -> Result(#(Option(Expression), Tokens), Error) {
   use #(parsed, tokens) <- result.try(case tokens {
     [#(t.Dot, _), #(t.Ident(name), _), ..tokens]
     | [#(t.Ident(name), _), ..tokens] -> Ok(#(Some(Ident(name)), tokens))
@@ -303,7 +303,7 @@ fn comma_delimited(
 
 fn map_field(
   tokens: Tokens,
-) -> Result(#(#(Expression(a), Expression(a)), Tokens), Error) {
+) -> Result(#(#(Expression, Expression), Tokens), Error) {
   use #(key_expression, tokens) <- result.try(expression(tokens))
 
   case tokens {
@@ -347,9 +347,9 @@ fn list(
 }
 
 fn after_expression(
-  parsed: Expression(a),
+  parsed: Expression,
   tokens: Tokens,
-) -> Result(#(Expression(a), Tokens), Error) {
+) -> Result(#(Expression, Tokens), Error) {
   case tokens {
     // Member attribute
     [#(t.Dot, _), #(t.Ident(label), _), ..tokens] -> {
@@ -384,11 +384,11 @@ fn after_expression(
 }
 
 fn call(
-  arguments: List(Expression(a)),
+  arguments: List(Expression),
   ident: String,
-  this: Option(Expression(a)),
+  this: Option(Expression),
   tokens: Tokens,
-) -> Result(#(Expression(a), Tokens), Error) {
+) -> Result(#(Expression, Tokens), Error) {
   case tokens {
     [] -> Error(UnexpectedEndOfFile)
 
@@ -446,7 +446,7 @@ fn tokenize(source: String) -> Result(Tokens, Error) {
   lexed
 }
 
-fn parse_(tokens: Tokens) -> Result(Expression(a), Error) {
+fn parse_(tokens: Tokens) -> Result(Expression, Error) {
   use #(expr, rest) <- result.try(expression(tokens))
 
   case rest {
@@ -455,7 +455,7 @@ fn parse_(tokens: Tokens) -> Result(Expression(a), Error) {
   }
 }
 
-pub fn parse(source: String) -> Result(Expression(a), Error) {
+pub fn parse(source: String) -> Result(Expression, Error) {
   tokenize(source)
   |> result.then(parse_)
 }

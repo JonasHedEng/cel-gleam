@@ -1,7 +1,9 @@
 import cel/parser
 import gleam/dict
 import gleam/dynamic
+import gleam/list
 import gleam/option
+import gleam/result
 
 import decode/zero
 

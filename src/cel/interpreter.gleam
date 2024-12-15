@@ -7,11 +7,11 @@ import cel/interpreter/function
 import cel/interpreter/value.{type Value}
 import cel/parser
 
-pub opaque type Program(a) {
-  Program(expr: parser.Expression(a))
+pub opaque type Program {
+  Program(expr: parser.Expression)
 }
 
-pub fn default_context() -> context.Context(a) {
+pub fn default_context() -> context.Context {
   context.empty()
   |> context.insert_function("filter", function.filter)
   |> context.insert_function("map", function.map)
@@ -22,14 +22,14 @@ pub fn default_context() -> context.Context(a) {
   |> context.insert_function("exists_one", function.exists_one)
 }
 
-pub fn new(with_source source: String) -> Result(Program(a), parser.Error) {
+pub fn new(with_source source: String) -> Result(Program, parser.Error) {
   use parsed <- result.map(parser.parse(source))
   Program(parsed)
 }
 
 pub fn execute(
-  program: Program(a),
-  ctx: context.Context(a),
-) -> Result(Value, ExecutionError(a)) {
+  program: Program,
+  ctx: context.Context,
+) -> Result(Value, ExecutionError) {
   evaluate.evaluate_expr(program.expr, ctx)
 }

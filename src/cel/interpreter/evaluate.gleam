@@ -13,9 +13,9 @@ import cel/interpreter/value as v
 import cel/parser as p
 
 pub fn evaluate_expr(
-  expr: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  expr: p.Expression,
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   case expr {
     p.BinaryOperation(lhs, op, rhs) -> evaluate_binop(lhs, op, rhs, ctx)
     p.Ident(ident) ->
@@ -80,11 +80,11 @@ pub fn evaluate_expr(
 }
 
 fn evaluate_binop(
-  lhs: p.Expression(a),
+  lhs: p.Expression,
   op: p.BinaryOp,
-  rhs: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  rhs: p.Expression,
+  ctx: context.Context,
+) {
   case op {
     p.Arithmetic(op) -> evaluate_arithmetic(lhs, op, rhs, ctx)
     p.Relation(op) -> evaluate_relation(lhs, op, rhs, ctx)
@@ -93,11 +93,11 @@ fn evaluate_binop(
 }
 
 fn evaluate_arithmetic(
-  lhs: p.Expression(a),
+  lhs: p.Expression,
   op: p.Arithmetic,
-  rhs: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  rhs: p.Expression,
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
@@ -169,11 +169,11 @@ fn evaluate_arithmetic(
 }
 
 fn evaluate_logical(
-  lhs: p.Expression(a),
+  lhs: p.Expression,
   op: p.Logical,
-  rhs: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  rhs: p.Expression,
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
@@ -189,11 +189,11 @@ fn evaluate_logical(
 }
 
 fn evaluate_relation(
-  lhs: p.Expression(a),
+  lhs: p.Expression,
   op: p.Relation,
-  rhs: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  rhs: p.Expression,
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
@@ -285,11 +285,11 @@ fn evaluate_relation(
 }
 
 fn evaluate_ternary(
-  cond: p.Expression(a),
-  then: p.Expression(a),
-  otherwise: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  cond: p.Expression,
+  then: p.Expression,
+  otherwise: p.Expression,
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use cond_val <- result.try(evaluate_expr(cond, ctx))
 
   case cond_val {
@@ -301,9 +301,9 @@ fn evaluate_ternary(
 
 fn evaluate_unary(
   op: p.UnaryOp,
-  expr: p.Expression(a),
-  ctx: context.Context(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  expr: p.Expression,
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use val <- result.try(evaluate_expr(expr, ctx))
 
   case op, val {
@@ -322,7 +322,7 @@ fn find_in_list(
   in container: List(t),
   at target: Int,
   current index: Int,
-) -> Result(t, error.ExecutionError(a)) {
+) -> Result(t, error.ExecutionError) {
   case container {
     [] -> Error(error.IndexOutOfBounds(size: index, index: target))
     [item, ..] if target == index -> Ok(item)
@@ -331,10 +331,10 @@ fn find_in_list(
 }
 
 fn resolve_member(
-  ctx: context.Context(a),
+  ctx: context.Context,
   parent: v.Value,
-  member: p.Member(a),
-) -> Result(v.Value, ExecutionError(a)) {
+  member: p.Member,
+) -> Result(v.Value, ExecutionError) {
   case member {
     p.Attribute(attr) -> {
       case parent {

@@ -4,17 +4,17 @@ import cel/interpreter/type_.{type Type}
 import cel/interpreter/value.{type Value}
 import cel/parser
 
-pub type ContextError(a) {
+pub type ContextError {
   UnknownIdentifier(String)
   UnknownFunction(String)
-  NoSuchKey(parser.Member(a))
-  InvalidMemberParent(parent_type: Type, member: parser.Member(a))
+  NoSuchKey(parser.Member)
+  InvalidMemberParent(parent_type: Type, member: parser.Member)
 
   Decode(dynamic.DecodeErrors)
 }
 
-pub type ExecutionError(a) {
-  ContextError(ContextError(a))
+pub type ExecutionError {
+  ContextError(ContextError)
 
   UnsupportedBinop(Type, String, Type)
   UnsupportedUnary(String, Type)
