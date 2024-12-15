@@ -14,17 +14,17 @@ pub fn references_test() {
   |> should.equal(
     type_.ReferenceMap(
       dict.from_list([
-        #(1, Variable(["a", "b", "c"])),
-        #(2, Variable(["f", "g"])),
-        #(3, Variable(["d", "e", "[]"])),
-        #(6, Constant(Int(1))),
-        #(7, Constant(Int(2))),
-        #(8, Variable(["x"])),
-        #(9, Variable(["x"])),
+        #(2, Variable(["a", "b", "c"])),
+        #(4, Variable(["d", "e"])),
+        #(6, Variable(["f", "g"])),
+        #(9, Constant(Int(1))),
         #(10, Constant(Int(2))),
-        #(11, Call("map")),
-        #(13, Constant(Int(5))),
-        #(14, Call("list")),
+        #(13, Variable(["x"])),
+        #(14, Variable(["x"])),
+        #(15, Constant(Int(2))),
+        #(17, Call("map")),
+        #(19, Constant(Int(5))),
+        #(20, Call("list")),
       ]),
     ),
   )

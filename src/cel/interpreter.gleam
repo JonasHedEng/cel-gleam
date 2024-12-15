@@ -8,7 +8,7 @@ import cel/interpreter/value.{type Value}
 import cel/parser
 
 pub opaque type Program {
-  Program(expr: parser.Expression)
+  Program(expr: parser.ExpressionData)
 }
 
 pub fn default_context() -> context.Context {
@@ -31,5 +31,5 @@ pub fn execute(
   program: Program,
   ctx: context.Context,
 ) -> Result(Value, ExecutionError) {
-  evaluate.evaluate_expr(program.expr, ctx)
+  evaluate.evaluate_expr(parser.expr(program.expr), ctx)
 }

@@ -1,11 +1,7 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic
-import gleam/io
-import gleam/list
 import gleam/option.{type Option}
 import gleam/result
-
-import decode/zero
 
 import cel/interpreter/error.{type ContextError, type ExecutionError, Decode}
 import cel/interpreter/value.{type Value}

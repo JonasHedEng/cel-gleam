@@ -1,5 +1,5 @@
 import cel/interpreter/value.{type Value}
-import cel/parser.{type Expression}
+import cel/parser
 import gleam/dict
 import gleam/list
 import gleam/option
@@ -48,36 +48,29 @@ pub type ReferenceMap {
   ReferenceMap(dict.Dict(Int, Reference))
 }
 
-fn member_path(expr: Expression) -> List(String) {
-  case expr {
-    parser.Member(parser.Ident(parent), parser.Attribute(name)) -> [
-      name,
-      parent,
-    ]
-    parser.Member(parser.Ident(parent), parser.Index(_)) -> ["[]", parent]
-    parser.Member(parent, parser.Attribute(name)) -> [
-      name,
-      ..member_path(parent)
-    ]
-    parser.Member(parent, parser.Index(_)) -> ["[]", ..member_path(parent)]
+fn member_path(expr: parser.ExpressionData) -> List(String) {
+  case parser.expr(expr) {
+    parser.Member(parent, parser.Attribute(name)) -> {
+      case parser.expr(parent) {
+        parser.Ident(parent) -> [name, parent]
+        _ -> [name, ..member_path(parent)]
+      }
+    }
     _ -> []
   }
 }
 
 // TODO: Consider implementing an ExpressionVisitor to reuse expression traversal
-fn enumerated_references(
-  expr: Expression,
+fn collect_id_references(
+  expr: parser.ExpressionData,
   acc: dict.Dict(Int, Reference),
-  id: Int,
-) -> #(dict.Dict(Int, Reference), Int) {
-  case expr {
-    parser.Atom(atom) -> #(
-      dict.insert(acc, id, Constant(value.from_atom(atom))),
-      id,
-    )
+) -> dict.Dict(Int, Reference) {
+  let id = expr |> parser.id
+  case expr |> parser.expr {
+    parser.Atom(atom) -> dict.insert(acc, id, Constant(value.from_atom(atom)))
     parser.BinaryOperation(lhs, _, rhs) -> {
-      let #(enumerated_lhs, id) = enumerated_references(lhs, acc, id)
-      enumerated_references(rhs, enumerated_lhs, id + 1)
+      let enumerated_lhs = collect_id_references(lhs, acc)
+      collect_id_references(rhs, enumerated_lhs)
     }
     parser.FunctionCall(name, this, args) -> {
       let expressions = case this {
@@ -85,54 +78,43 @@ fn enumerated_references(
         option.None -> args
       }
 
-      let #(enumerated, last_id) =
+      let enumerated =
         expressions
-        |> list.fold(#(acc, id), fn(acc_id, expr) {
-          let #(acc, id) = acc_id
-          enumerated_references(expr, acc, id + 1)
-        })
+        |> list.fold(acc, fn(acc, expr) { collect_id_references(expr, acc) })
 
-      #(dict.insert(enumerated, last_id + 1, Call(name)), last_id + 1)
+      dict.insert(enumerated, id, Call(name))
     }
-    parser.Ident(name) -> #(dict.insert(acc, id, Variable([name])), id)
+    parser.Ident(name) -> dict.insert(acc, id, Variable([name]))
     parser.List(expressions) ->
       expressions
-      |> list.fold(#(acc, id), fn(acc_id, expr) {
-        let #(acc, id) = acc_id
-        enumerated_references(expr, acc, id + 1)
-      })
+      |> list.fold(acc, fn(acc, expr) { collect_id_references(expr, acc) })
 
     parser.Map(map) ->
       map
-      |> list.fold(#(acc, id), fn(acc_id, key_value) {
-        let #(acc, id) = acc_id
+      |> list.fold(acc, fn(acc, key_value) {
         let #(key, value) = key_value
 
-        let #(enumerated, last_id) = enumerated_references(key, acc, id)
-        enumerated_references(value, enumerated, last_id + 1)
+        let enumerated = collect_id_references(key, acc)
+        collect_id_references(value, enumerated)
       })
     parser.Member(_, parser.Attribute(_)) -> {
-      let path = member_path(expr) |> list.reverse
-      #(dict.insert(acc, id, Variable(path)), id)
+      let path = member_path(expr)
+      dict.insert(acc, id, Variable(list.reverse(path)))
     }
-    parser.Member(_, parser.Index(inner)) -> {
-      let path = member_path(expr) |> list.reverse
-      let #(acc, last_id) = enumerated_references(inner, acc, id)
-      #(dict.insert(acc, last_id + 1, Variable(path)), last_id + 1)
+    parser.Member(parent, parser.Index(inner)) -> {
+      let acc = collect_id_references(parent, acc)
+      collect_id_references(inner, acc)
     }
     parser.Ternary(cond, then, otherwise) ->
       [cond, then, otherwise]
-      |> list.fold(#(acc, id), fn(acc_id, expr) {
-        let #(acc, last_id) = acc_id
-        enumerated_references(expr, acc, last_id + 1)
-      })
+      |> list.fold(acc, fn(acc, expr) { collect_id_references(expr, acc) })
 
-    parser.Unary(_, expr) -> enumerated_references(expr, acc, id)
+    parser.Unary(_, expr) -> collect_id_references(expr, acc)
   }
 }
 
-pub fn references(expr: Expression) -> ReferenceMap {
-  let #(refs, _) = enumerated_references(expr, dict.new(), 0)
+pub fn references(expr: parser.ExpressionData) -> ReferenceMap {
+  let refs = collect_id_references(expr, dict.new())
   ReferenceMap(refs)
 }
 

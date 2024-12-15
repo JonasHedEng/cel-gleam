@@ -17,34 +17,35 @@ pub fn evaluate_expr(
   ctx: context.Context,
 ) -> Result(v.Value, ExecutionError) {
   case expr {
-    p.BinaryOperation(lhs, op, rhs) -> evaluate_binop(lhs, op, rhs, ctx)
+    p.BinaryOperation(lhs, op, rhs) ->
+      evaluate_binop(p.expr(lhs), op, p.expr(rhs), ctx)
     p.Ident(ident) ->
       context.resolve_variable(ctx, ident)
       |> result.map_error(error.ContextError)
     p.Ternary(cond, then, otherwise) ->
-      evaluate_ternary(cond, then, otherwise, ctx)
-    p.Unary(op, unary_expr) -> evaluate_unary(op, unary_expr, ctx)
+      evaluate_ternary(p.expr(cond), p.expr(then), p.expr(otherwise), ctx)
+    p.Unary(op, unary_expr) -> evaluate_unary(op, p.expr(unary_expr), ctx)
 
     p.Member(ident, member) -> {
-      use parent <- result.try(evaluate_expr(ident, ctx))
+      use parent <- result.try(evaluate_expr(p.expr(ident), ctx))
       resolve_member(ctx, parent, member)
     }
 
     p.List(exprs) -> {
-      list.try_map(exprs, fn(l) { evaluate_expr(l, ctx) })
+      list.try_map(exprs, fn(l) { evaluate_expr(p.expr(l), ctx) })
       |> result.map(v.List)
     }
     p.Map(fields) -> {
       list.try_map(fields, fn(field) {
         let #(field_key, field_value) = field
 
-        use field_key <- result.try(evaluate_expr(field_key, ctx))
+        use field_key <- result.try(evaluate_expr(p.expr(field_key), ctx))
 
         use key <- result.try(
           v.key_from_value(field_key)
           |> result.map_error(fn(_) { error.InvalidValueAsKey(field_key) }),
         )
-        use val <- result.try(evaluate_expr(field_value, ctx))
+        use val <- result.try(evaluate_expr(p.expr(field_value), ctx))
 
         Ok(#(key, val))
       })
@@ -55,12 +56,13 @@ pub fn evaluate_expr(
     p.FunctionCall(ident, this, args) -> {
       use target <- result.try(case this {
         Some(expr) -> {
-          evaluate_expr(expr, ctx) |> result.map(Some)
+          evaluate_expr(p.expr(expr), ctx) |> result.map(Some)
         }
         None -> Ok(None)
       })
 
-      let ftx = context.FunctionContext(ident, target, ctx, args)
+      let ftx =
+        context.FunctionContext(ident, target, ctx, list.map(args, p.expr))
       use function <- result.try(
         context.resolve_function(ctx, ident)
         |> result.map_error(error.ContextError),
@@ -350,7 +352,7 @@ fn resolve_member(
       |> result.map_error(error.ContextError)
     }
     p.Index(i) -> {
-      use index <- result.try(evaluate_expr(i, ctx))
+      use index <- result.try(evaluate_expr(p.expr(i), ctx))
 
       case parent, index {
         v.List(container), v.Int(idx) | v.List(container), v.UInt(idx) -> {

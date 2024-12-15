@@ -11,7 +11,12 @@ pub fn parse_list_test() {
 
   parsed
   |> should.equal(
-    p.List([p.Atom(p.Int(1)), p.Atom(p.Int(2)), p.Atom(p.Int(3))]),
+    p.List([
+      p.Atom(p.Int(1)) |> p.with_id(0),
+      p.Atom(p.Int(2)) |> p.with_id(1),
+      p.Atom(p.Int(3)) |> p.with_id(2),
+    ])
+    |> p.with_id(3),
   )
 }
 
@@ -34,18 +39,26 @@ pub fn parse_nested_ternary_test() {
 
   let expected =
     p.Ternary(
-      p.BinaryOperation(p.Ident("a"), p.Relation(p.Equals), p.Atom(p.Int(1))),
+      p.BinaryOperation(
+        p.Ident("a") |> p.with_id(0),
+        p.Relation(p.Equals),
+        p.Atom(p.Int(1)) |> p.with_id(1),
+      )
+        |> p.with_id(2),
       p.Ternary(
         p.BinaryOperation(
-          p.Ident("b"),
+          p.Ident("b") |> p.with_id(3),
           p.Relation(p.GreaterThan),
-          p.Atom(p.Int(3)),
-        ),
-        p.Atom(p.Int(2)),
-        p.Atom(p.Int(4)),
-      ),
-      p.Atom(p.Int(6)),
+          p.Atom(p.Int(3)) |> p.with_id(4),
+        )
+          |> p.with_id(5),
+        p.Atom(p.Int(2)) |> p.with_id(6),
+        p.Atom(p.Int(4)) |> p.with_id(7),
+      )
+        |> p.with_id(8),
+      p.Atom(p.Int(6)) |> p.with_id(9),
     )
+    |> p.with_id(10)
 
   let parsed = p.parse(source)
 
@@ -60,10 +73,11 @@ pub fn parse_map_test() {
 
   let expected =
     p.Map([
-      #(p.Atom(p.String("a")), p.Atom(p.Int(1))),
-      #(p.Atom(p.String("b")), p.Atom(p.Int(2))),
-      #(p.Atom(p.String("c")), p.Atom(p.Int(3))),
+      #(p.Atom(p.String("a")) |> p.with_id(0), p.Atom(p.Int(1)) |> p.with_id(1)),
+      #(p.Atom(p.String("b")) |> p.with_id(2), p.Atom(p.Int(2)) |> p.with_id(3)),
+      #(p.Atom(p.String("c")) |> p.with_id(4), p.Atom(p.Int(3)) |> p.with_id(5)),
     ])
+    |> p.with_id(6)
 
   parsed
   |> should.equal(expected)
@@ -76,9 +90,11 @@ pub fn parse_member_field_test() {
 
   let expected =
     p.Member(
-      p.Member(p.Ident("obj"), p.Attribute("field")),
+      p.Member(p.Ident("obj") |> p.with_id(0), p.Attribute("field"))
+        |> p.with_id(1),
       p.Attribute("inner"),
     )
+    |> p.with_id(2)
 
   parsed
   |> should.equal(expected)
@@ -89,7 +105,7 @@ pub fn parse_nested_parenthesis_test() {
 
   let assert Ok(parsed) = p.parse(source)
 
-  let expected = p.Ident("inner")
+  let expected = p.Ident("inner") |> p.with_id(0)
 
   parsed
   |> should.equal(expected)
@@ -102,12 +118,17 @@ pub fn parse_member_variants_test() {
 
   let expected =
     p.Member(
-      p.Ident("arr"),
-      p.Index(p.Member(
-        p.Member(p.Ident("obj"), p.Attribute("field")),
-        p.Attribute("inner"),
-      )),
+      p.Ident("arr") |> p.with_id(0),
+      p.Index(
+        p.Member(
+          p.Member(p.Ident("obj") |> p.with_id(1), p.Attribute("field"))
+            |> p.with_id(2),
+          p.Attribute("inner"),
+        )
+        |> p.with_id(3),
+      ),
     )
+    |> p.with_id(4)
 
   parsed
   |> should.equal(expected)
@@ -120,12 +141,22 @@ pub fn parse_index_into_inline_list_test() {
 
   let expected =
     p.Member(
-      p.List([p.Int(1), p.Int(2), p.Int(3)] |> list.map(p.Atom)),
-      p.Index(p.Member(
-        p.Member(p.Ident("obj"), p.Attribute("field")),
-        p.Attribute("inner"),
-      )),
+      p.List(
+        [p.Int(1), p.Int(2), p.Int(3)]
+        |> list.map(p.Atom)
+        |> list.index_map(p.with_id),
+      )
+        |> p.with_id(3),
+      p.Index(
+        p.Member(
+          p.Member(p.Ident("obj") |> p.with_id(4), p.Attribute("field"))
+            |> p.with_id(5),
+          p.Attribute("inner"),
+        )
+        |> p.with_id(6),
+      ),
     )
+    |> p.with_id(7)
 
   parsed
   |> should.equal(expected)
@@ -139,12 +170,26 @@ pub fn parse_function_call_test() {
   let expected =
     p.FunctionCall(
       "map",
-      option.Some(p.List([p.Int(1), p.Int(2), p.Int(3)] |> list.map(p.Atom))),
+      option.Some(
+        p.List(
+          [1, 2, 3]
+          |> list.map(p.Int)
+          |> list.map(p.Atom)
+          |> list.index_map(p.with_id),
+        )
+        |> p.with_id(3),
+      ),
       [
-        p.Ident("x"),
-        p.BinaryOperation(p.Ident("x"), p.Arithmetic(p.Mul), p.Atom(p.Int(2))),
+        p.Ident("x") |> p.with_id(5),
+        p.BinaryOperation(
+          p.Ident("x") |> p.with_id(6),
+          p.Arithmetic(p.Mul),
+          p.Atom(p.Int(2)) |> p.with_id(7),
+        )
+          |> p.with_id(8),
       ],
     )
+    |> p.with_id(9)
 
   parsed
   |> should.equal(expected)
@@ -154,7 +199,7 @@ pub fn parse_optional_ident_dot_prefix_test() {
   let source = ".ident"
 
   let assert Ok(parsed) = p.parse(source)
-  let expected = p.Ident("ident")
+  let expected = p.Ident("ident") |> p.with_id(0)
 
   parsed
   |> should.equal(expected)
