@@ -13,12 +13,12 @@ import cel/interpreter/value.{type Value}
 import cel/parser as p
 
 fn filter_impl(
-  ctx ctx: ctx.Context,
+  ctx ctx: ctx.Context(a),
   ident ident: String,
   items items: List(Value),
   filtered filtered: List(Value),
-  expr expr: p.Expression,
-) -> Result(List(Value), ExecutionError) {
+  expr expr: p.Expression(a),
+) -> Result(List(Value), ExecutionError(a)) {
   case items {
     [] -> Ok(list.reverse(filtered))
     [item, ..rest] -> {
@@ -41,7 +41,7 @@ fn filter_impl(
   }
 }
 
-pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn filter(ftx: ctx.FunctionContext(a)) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
 
   use #(ident, expr) <- result.try(case args {
@@ -71,12 +71,12 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 }
 
 fn map_impl(
-  ctx ctx: ctx.Context,
+  ctx ctx: ctx.Context(a),
   ident ident: String,
   items items: List(Value),
   mapped mapped: List(Value),
-  expr expr: p.Expression,
-) -> Result(List(Value), ExecutionError) {
+  expr expr: p.Expression(a),
+) -> Result(List(Value), ExecutionError(a)) {
   case items {
     [] -> Ok(list.reverse(mapped))
     [item, ..rest] -> {
@@ -88,7 +88,7 @@ fn map_impl(
   }
 }
 
-pub fn map(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn map(ftx: ctx.FunctionContext(a)) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
 
   use #(ident, expr) <- result.try(case args {
@@ -112,11 +112,11 @@ pub fn map(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 }
 
 fn all_impl(
-  ctx ctx: ctx.Context,
+  ctx ctx: ctx.Context(a),
   ident ident: String,
   items items: List(Value),
-  expr expr: p.Expression,
-) -> Result(Bool, ExecutionError) {
+  expr expr: p.Expression(a),
+) -> Result(Bool, ExecutionError(a)) {
   case items {
     [] -> Ok(True)
     [item, ..rest] -> {
@@ -137,7 +137,7 @@ fn all_impl(
   }
 }
 
-pub fn all(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn all(ftx: ctx.FunctionContext(a)) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
 
   use #(ident, expr) <- result.try(case args {
@@ -160,7 +160,7 @@ pub fn all(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   }
 }
 
-pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn size(ftx: ctx.FunctionContext(a)) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: _this, args: args) = ftx
 
   // TODO: Ensure `this` isn't set
@@ -187,7 +187,7 @@ pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   }
 }
 
-pub fn has(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn has(ftx: ctx.FunctionContext(a)) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: _this, args: args) = ftx
 
   // TODO: Ensure `this` isn't set
@@ -207,11 +207,11 @@ pub fn has(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 }
 
 fn exists_impl(
-  ctx ctx: ctx.Context,
+  ctx ctx: ctx.Context(a),
   ident ident: String,
   items items: List(Value),
-  expr expr: p.Expression,
-) -> Result(Bool, ExecutionError) {
+  expr expr: p.Expression(a),
+) -> Result(Bool, ExecutionError(a)) {
   case items {
     [] -> Ok(False)
     [item, ..rest] -> {
@@ -232,7 +232,7 @@ fn exists_impl(
   }
 }
 
-pub fn exists(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn exists(ftx: ctx.FunctionContext(a)) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
 
   use #(ident, expr) <- result.try(case args {
@@ -256,12 +256,12 @@ pub fn exists(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 }
 
 fn exists_one_impl(
-  ctx ctx: ctx.Context,
+  ctx ctx: ctx.Context(a),
   ident ident: String,
   items items: List(Value),
-  expr expr: p.Expression,
+  expr expr: p.Expression(a),
   found found: Bool,
-) -> Result(Bool, ExecutionError) {
+) -> Result(Bool, ExecutionError(a)) {
   case items {
     [] -> Ok(found)
     [item, ..rest] -> {
@@ -283,7 +283,9 @@ fn exists_one_impl(
   }
 }
 
-pub fn exists_one(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
+pub fn exists_one(
+  ftx: ctx.FunctionContext(a),
+) -> Result(Value, ExecutionError(a)) {
   let ctx.FunctionContext(name: name, ctx: ctx, this: this, args: args) = ftx
 
   use #(ident, expr) <- result.try(case args {

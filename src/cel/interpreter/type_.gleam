@@ -48,7 +48,7 @@ pub type ReferenceMap {
   ReferenceMap(dict.Dict(Int, Reference))
 }
 
-fn member_path(expr: Expression) -> List(String) {
+fn member_path(expr: Expression(a)) -> List(String) {
   case expr {
     parser.Member(parser.Ident(parent), parser.Attribute(name)) -> [
       name,
@@ -66,7 +66,7 @@ fn member_path(expr: Expression) -> List(String) {
 
 // TODO: Consider implementing an ExpressionVisitor to reuse expression traversal
 fn enumerated_references(
-  expr: Expression,
+  expr: Expression(a),
   acc: dict.Dict(Int, Reference),
   id: Int,
 ) -> #(dict.Dict(Int, Reference), Int) {
@@ -131,7 +131,7 @@ fn enumerated_references(
   }
 }
 
-pub fn references(expr: Expression) -> ReferenceMap {
+pub fn references(expr: Expression(a)) -> ReferenceMap {
   let #(refs, _) = enumerated_references(expr, dict.new(), 0)
   ReferenceMap(refs)
 }

@@ -1,48 +1,44 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic
-import gleam/io
-import gleam/list
 import gleam/option.{type Option}
 import gleam/result
-
-import decode/zero
 
 import cel/interpreter/error.{type ContextError, type ExecutionError, Decode}
 import cel/interpreter/value.{type Value}
 import cel/parser.{type Expression}
 
-pub type FunctionContext {
+pub type FunctionContext(a) {
   FunctionContext(
     name: String,
     this: Option(Value),
-    ctx: Context,
-    args: List(Expression),
+    ctx: Context(a),
+    args: List(Expression(a)),
   )
 }
 
-pub type Callable {
-  Callable(call: fn(FunctionContext) -> Result(Value, ExecutionError))
+pub type Callable(a) {
+  Callable(call: fn(FunctionContext(a)) -> Result(Value, ExecutionError(a)))
 }
 
-pub type Context {
-  Root(variables: Dict(String, Value), functions: Dict(String, Callable))
-  Child(variables: Dict(String, Value), parent: Context)
+pub type Context(a) {
+  Root(variables: Dict(String, Value), functions: Dict(String, Callable(a)))
+  Child(variables: Dict(String, Value), parent: Context(a))
 }
 
-pub fn empty() -> Context {
+pub fn empty() -> Context(a) {
   Root(variables: dict.new(), functions: dict.new())
 }
 
-pub fn new_inner(ctx: Context) -> Context {
+pub fn new_inner(ctx: Context(a)) -> Context(a) {
   let parent = ctx
   Child(variables: dict.new(), parent:)
 }
 
 pub fn try_insert_variable(
-  ctx: Context,
+  ctx: Context(a),
   name: String,
   input: dynamic.Dynamic,
-) -> Result(Context, ContextError) {
+) -> Result(Context(a), ContextError(a)) {
   use value <- result.map(
     value.decode(input)
     |> result.map_error(Decode),
@@ -51,7 +47,11 @@ pub fn try_insert_variable(
   insert_variable(ctx, name, value)
 }
 
-pub fn insert_variable(ctx: Context, name: String, value: Value) -> Context {
+pub fn insert_variable(
+  ctx: Context(a),
+  name: String,
+  value: Value,
+) -> Context(a) {
   case ctx {
     Root(variables, functions) -> {
       let new_vars = dict.insert(variables, name, value)
@@ -65,10 +65,10 @@ pub fn insert_variable(ctx: Context, name: String, value: Value) -> Context {
 }
 
 pub fn insert_function(
-  ctx: Context,
+  ctx: Context(a),
   name: String,
-  func: fn(FunctionContext) -> Result(Value, ExecutionError),
-) -> Context {
+  func: fn(FunctionContext(a)) -> Result(Value, ExecutionError(a)),
+) -> Context(a) {
   case ctx {
     Root(variables, functions) -> {
       let new_funcs = dict.insert(functions, name, Callable(func))
@@ -82,9 +82,9 @@ pub fn insert_function(
 }
 
 pub fn resolve_variable(
-  ctx: Context,
+  ctx: Context(a),
   name: String,
-) -> Result(Value, ContextError) {
+) -> Result(Value, ContextError(a)) {
   case ctx {
     Root(variables, _functions) -> {
       dict.get(variables, name)
@@ -100,9 +100,9 @@ pub fn resolve_variable(
 }
 
 pub fn resolve_function(
-  ctx: Context,
+  ctx: Context(a),
   name: String,
-) -> Result(Callable, ContextError) {
+) -> Result(Callable(a), ContextError(a)) {
   case ctx {
     Root(variables: _, functions:) -> {
       dict.get(functions, name)
