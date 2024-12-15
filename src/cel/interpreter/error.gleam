@@ -1,6 +1,7 @@
 import gleam/dynamic
 
-import cel/interpreter/value.{type Type, type Value}
+import cel/interpreter/type_.{type Type}
+import cel/interpreter/value.{type Value}
 import cel/parser
 
 pub type ContextError {

@@ -1,3 +1,4 @@
+import cel/interpreter/type_
 import gleam/dict
 import gleam/list
 import gleam/option.{None, Some}
@@ -29,8 +30,8 @@ fn filter_impl(
         v.Bool(False) -> Ok(filtered)
         _ ->
           Error(error.UnexpectedType(
-            expected: [v.BoolT],
-            got: v.to_type(cond),
+            expected: [type_.BoolT],
+            got: type_.kind(cond),
             in_context: "filter condition",
           ))
       })
@@ -61,8 +62,8 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
     }
     Some(other) ->
       Error(error.UnexpectedType(
-        expected: [v.ListT],
-        got: v.to_type(other),
+        expected: [type_.ListT(type_.DynamicT)],
+        got: type_.kind(other),
         in_context: "filter target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))
@@ -102,8 +103,8 @@ pub fn map(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
     }
     Some(other) ->
       Error(error.UnexpectedType(
-        expected: [v.ListT],
-        got: v.to_type(other),
+        expected: [type_.ListT(type_.DynamicT)],
+        got: type_.kind(other),
         in_context: "map target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))
@@ -127,8 +128,8 @@ fn all_impl(
         v.Bool(False) -> Ok(False)
         _ ->
           Error(error.UnexpectedType(
-            expected: [v.BoolT],
-            got: v.to_type(cond),
+            expected: [type_.BoolT],
+            got: type_.kind(cond),
             in_context: "all condition",
           ))
       }
@@ -151,8 +152,8 @@ pub fn all(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
     }
     Some(other) ->
       Error(error.UnexpectedType(
-        expected: [v.ListT],
-        got: v.to_type(other),
+        expected: [type_.ListT(type_.DynamicT)],
+        got: type_.kind(other),
         in_context: "all target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))
@@ -175,8 +176,12 @@ pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
     v.String(str) -> Ok(v.Int(string.length(str)))
     other ->
       Error(error.UnexpectedType(
-        expected: [v.ListT, v.MapT, v.StringT],
-        got: v.to_type(other),
+        expected: [
+          type_.ListT(type_.DynamicT),
+          type_.MapT(type_.DynamicT, type_.DynamicT),
+          type_.StringT,
+        ],
+        got: type_.kind(other),
         in_context: "size target",
       ))
   }
@@ -218,8 +223,8 @@ fn exists_impl(
         v.Bool(False) -> exists_impl(ctx, ident, rest, expr)
         _ ->
           Error(error.UnexpectedType(
-            expected: [v.BoolT],
-            got: v.to_type(cond),
+            expected: [type_.BoolT],
+            got: type_.kind(cond),
             in_context: "exists condition",
           ))
       }
@@ -242,8 +247,8 @@ pub fn exists(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
     }
     Some(other) ->
       Error(error.UnexpectedType(
-        expected: [v.ListT],
-        got: v.to_type(other),
+        expected: [type_.ListT(type_.DynamicT)],
+        got: type_.kind(other),
         in_context: "exists target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))
@@ -269,8 +274,8 @@ fn exists_one_impl(
         v.Bool(False), _ -> exists_one_impl(ctx, ident, rest, expr, found)
         _, _ ->
           Error(error.UnexpectedType(
-            expected: [v.BoolT],
-            got: v.to_type(cond),
+            expected: [type_.BoolT],
+            got: type_.kind(cond),
             in_context: "exists one condition",
           ))
       }
@@ -299,8 +304,8 @@ pub fn exists_one(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
     }
     Some(other) ->
       Error(error.UnexpectedType(
-        expected: [v.ListT],
-        got: v.to_type(other),
+        expected: [type_.ListT(type_.DynamicT)],
+        got: type_.kind(other),
         in_context: "exists one target",
       ))
     None -> Error(error.FunctionExpectedThis(function: name))

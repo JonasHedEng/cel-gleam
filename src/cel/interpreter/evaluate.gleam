@@ -6,20 +6,21 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
-import cel/interpreter/context as ctx
+import cel/interpreter/context
 import cel/interpreter/error.{type ExecutionError}
-import cel/interpreter/value.{type Value}
+import cel/interpreter/type_
 import cel/interpreter/value as v
 import cel/parser as p
 
 pub fn evaluate_expr(
   expr: p.Expression,
-  ctx: ctx.Context,
-) -> Result(Value, ExecutionError) {
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   case expr {
     p.BinaryOperation(lhs, op, rhs) -> evaluate_binop(lhs, op, rhs, ctx)
     p.Ident(ident) ->
-      ctx.resolve_variable(ctx, ident) |> result.map_error(error.ContextError)
+      context.resolve_variable(ctx, ident)
+      |> result.map_error(error.ContextError)
     p.Ternary(cond, then, otherwise) ->
       evaluate_ternary(cond, then, otherwise, ctx)
     p.Unary(op, unary_expr) -> evaluate_unary(op, unary_expr, ctx)
@@ -59,9 +60,9 @@ pub fn evaluate_expr(
         None -> Ok(None)
       })
 
-      let ftx = ctx.FunctionContext(ident, target, ctx, args)
+      let ftx = context.FunctionContext(ident, target, ctx, args)
       use function <- result.try(
-        ctx.resolve_function(ctx, ident)
+        context.resolve_function(ctx, ident)
         |> result.map_error(error.ContextError),
       )
 
@@ -82,7 +83,7 @@ fn evaluate_binop(
   lhs: p.Expression,
   op: p.BinaryOp,
   rhs: p.Expression,
-  ctx: ctx.Context,
+  ctx: context.Context,
 ) {
   case op {
     p.Arithmetic(op) -> evaluate_arithmetic(lhs, op, rhs, ctx)
@@ -95,8 +96,8 @@ fn evaluate_arithmetic(
   lhs: p.Expression,
   op: p.Arithmetic,
   rhs: p.Expression,
-  ctx: ctx.Context,
-) -> Result(Value, ExecutionError) {
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
@@ -155,15 +156,15 @@ fn evaluate_arithmetic(
     v.List(l), p.Add, v.List(r) -> v.List(list.flatten([l, r])) |> Ok
 
     l, p.Add, r ->
-      error.UnsupportedBinop(v.to_type(l), "+", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "+", type_.kind(r)) |> Error
     l, p.Div, r ->
-      error.UnsupportedBinop(v.to_type(l), "/", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "/", type_.kind(r)) |> Error
     l, p.Mod, r ->
-      error.UnsupportedBinop(v.to_type(l), "%", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "%", type_.kind(r)) |> Error
     l, p.Mul, r ->
-      error.UnsupportedBinop(v.to_type(l), "*", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "*", type_.kind(r)) |> Error
     l, p.Sub, r ->
-      error.UnsupportedBinop(v.to_type(l), "-", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "-", type_.kind(r)) |> Error
   }
 }
 
@@ -171,8 +172,8 @@ fn evaluate_logical(
   lhs: p.Expression,
   op: p.Logical,
   rhs: p.Expression,
-  ctx: ctx.Context,
-) -> Result(Value, ExecutionError) {
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
@@ -181,9 +182,9 @@ fn evaluate_logical(
     v.Bool(l), p.Or, v.Bool(r) -> v.Bool(l || r) |> Ok
 
     l, p.And, r ->
-      error.UnsupportedBinop(v.to_type(l), "&&", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "&&", type_.kind(r)) |> Error
     l, p.Or, r ->
-      error.UnsupportedBinop(v.to_type(l), "||", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "||", type_.kind(r)) |> Error
   }
 }
 
@@ -191,8 +192,8 @@ fn evaluate_relation(
   lhs: p.Expression,
   op: p.Relation,
   rhs: p.Expression,
-  ctx: ctx.Context,
-) -> Result(Value, ExecutionError) {
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
@@ -271,15 +272,15 @@ fn evaluate_relation(
     }
 
     l, p.LessThanEq, r ->
-      error.UnsupportedBinop(v.to_type(l), "<=", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "<=", type_.kind(r)) |> Error
     l, p.LessThan, r ->
-      error.UnsupportedBinop(v.to_type(l), "<", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "<", type_.kind(r)) |> Error
     l, p.GreaterThanEq, r ->
-      error.UnsupportedBinop(v.to_type(l), ">=", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), ">=", type_.kind(r)) |> Error
     l, p.GreaterThan, r ->
-      error.UnsupportedBinop(v.to_type(l), ">", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), ">", type_.kind(r)) |> Error
     l, p.In, r ->
-      error.UnsupportedBinop(v.to_type(l), "in", v.to_type(r)) |> Error
+      error.UnsupportedBinop(type_.kind(l), "in", type_.kind(r)) |> Error
   }
 }
 
@@ -287,22 +288,22 @@ fn evaluate_ternary(
   cond: p.Expression,
   then: p.Expression,
   otherwise: p.Expression,
-  ctx: ctx.Context,
-) -> Result(Value, ExecutionError) {
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use cond_val <- result.try(evaluate_expr(cond, ctx))
 
   case cond_val {
     v.Bool(True) -> evaluate_expr(then, ctx)
     v.Bool(False) -> evaluate_expr(otherwise, ctx)
-    _ -> Error(error.UnsupportedTernaryCondition(v.to_type(cond_val)))
+    _ -> Error(error.UnsupportedTernaryCondition(type_.kind(cond_val)))
   }
 }
 
 fn evaluate_unary(
   op: p.UnaryOp,
   expr: p.Expression,
-  ctx: ctx.Context,
-) -> Result(Value, ExecutionError) {
+  ctx: context.Context,
+) -> Result(v.Value, ExecutionError) {
   use val <- result.try(evaluate_expr(expr, ctx))
 
   case op, val {
@@ -312,8 +313,8 @@ fn evaluate_unary(
     p.UnarySub, v.UInt(n) -> v.UInt(-n) |> Ok
     p.UnarySub, v.Float(n) -> v.Float(0.0 -. n) |> Ok
 
-    p.UnarySub, _ -> error.UnsupportedUnary("-", v.to_type(val)) |> Error
-    p.Not, _ -> error.UnsupportedUnary("!", v.to_type(val)) |> Error
+    p.UnarySub, _ -> error.UnsupportedUnary("-", type_.kind(val)) |> Error
+    p.Not, _ -> error.UnsupportedUnary("!", type_.kind(val)) |> Error
   }
 }
 
@@ -330,10 +331,10 @@ fn find_in_list(
 }
 
 fn resolve_member(
-  ctx: ctx.Context,
-  parent: value.Value,
+  ctx: context.Context,
+  parent: v.Value,
   member: p.Member,
-) -> Result(Value, ExecutionError) {
+) -> Result(v.Value, ExecutionError) {
   case member {
     p.Attribute(attr) -> {
       case parent {
@@ -342,7 +343,7 @@ fn resolve_member(
           |> result.replace_error(error.NoSuchKey(member))
         other ->
           Error(error.InvalidMemberParent(
-            parent_type: v.to_type(other),
+            parent_type: type_.kind(other),
             member:,
           ))
       }
@@ -373,7 +374,7 @@ fn resolve_member(
           |> result.map_error(error.ContextError)
         other, _ ->
           Error(error.InvalidMemberParent(
-            parent_type: v.to_type(other),
+            parent_type: type_.kind(other),
             member:,
           ))
           |> result.map_error(error.ContextError)

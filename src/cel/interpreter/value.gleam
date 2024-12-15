@@ -1,6 +1,9 @@
+import cel/parser
 import gleam/dict
 import gleam/dynamic
-import gleam/option.{type Option}
+import gleam/list
+import gleam/option
+import gleam/result
 
 import decode/zero
 
@@ -21,10 +24,22 @@ pub fn key_from_value(value: Value) -> Result(Key, Nil) {
   }
 }
 
+pub fn from_atom(atom: parser.Atom) -> Value {
+  case atom {
+    parser.Int(v) -> Int(v)
+    parser.UInt(v) -> UInt(v)
+    parser.Float(v) -> Float(v)
+    parser.Bool(v) -> Bool(v)
+    parser.Null -> Null
+    parser.String(v) -> String(v)
+    parser.Bytes(v) -> Bytes(v)
+  }
+}
+
 pub type Value {
   List(List(Value))
   Map(dict.Dict(Key, Value))
-  Function(String, Option(Value))
+  Function(String, List(Value))
   Int(Int)
   UInt(Int)
   Float(Float)
@@ -32,34 +47,6 @@ pub type Value {
   Bytes(BitArray)
   Bool(Bool)
   Null
-}
-
-pub fn to_type(value: Value) -> Type {
-  case value {
-    Bool(_) -> BoolT
-    Bytes(_) -> BytesT
-    Float(_) -> FloatT
-    Function(_, _) -> FunctionT
-    Int(_) -> IntT
-    List(_) -> ListT
-    Map(_) -> MapT
-    Null -> NullT
-    String(_) -> StringT
-    UInt(_) -> UIntT
-  }
-}
-
-pub type Type {
-  ListT
-  MapT
-  FunctionT
-  IntT
-  UIntT
-  FloatT
-  StringT
-  BytesT
-  BoolT
-  NullT
 }
 
 fn key_decoder() -> zero.Decoder(Key) {
