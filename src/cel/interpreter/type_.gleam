@@ -4,6 +4,7 @@ import gleam/dict
 import gleam/list
 import gleam/option
 
+/// A CEL type
 pub type Type {
   DynamicT
   ListT(Type)
@@ -18,6 +19,8 @@ pub type Type {
   NullT
 }
 
+/// Get the kind of type of a value. Will be the same as types for primitive types.
+/// For collections, the inner type(s) will be set to [`DynamicT`]
 pub fn kind(value: Value) -> Type {
   case value {
     value.Bool(_) -> BoolT
@@ -33,6 +36,7 @@ pub fn kind(value: Value) -> Type {
   }
 }
 
+/// A reference in an expression
 pub type Reference {
   /// A constant in an expression
   Constant(value: Value)
@@ -44,6 +48,8 @@ pub type Reference {
   Call(name: String)
 }
 
+/// A [`ReferenceMap`] contains references to constants, variables, and function calls of
+/// an expression. Each reference is stored by their Expression ID as the key.
 pub type ReferenceMap {
   ReferenceMap(dict.Dict(Int, Reference))
 }
@@ -113,11 +119,14 @@ fn collect_id_references(
   }
 }
 
+/// Collects all constants, variables and functions used in an expression along with
+/// their expression ID into a reference map.
 pub fn references(expr: parser.ExpressionData) -> ReferenceMap {
   let refs = collect_id_references(expr, dict.new())
   ReferenceMap(refs)
 }
 
+/// Lists all the variables in the reference map
 pub fn variables(map: ReferenceMap) -> List(List(String)) {
   let ReferenceMap(refs) = map
 
@@ -131,6 +140,7 @@ pub fn variables(map: ReferenceMap) -> List(List(String)) {
   |> list.unique
 }
 
+/// Lists all the functions in the reference map
 pub fn functions(map: ReferenceMap) -> List(String) {
   let ReferenceMap(refs) = map
 
