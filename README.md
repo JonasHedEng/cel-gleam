@@ -26,7 +26,7 @@ auth.claims.email_verified && resources.all(r, r.startsWith(auth.claims.email))
 ## Usage
 
 ```sh
-gleam add cel@0.2
+gleam add cel@0.3
 ```
 
 ```gleam
@@ -70,7 +70,7 @@ This library is still very early in its development. The current state and plann
 - [x] Expression evaluation
 - [x] Variable context resolution
 - [x] Functions/macros
-- [ ] Context provision through Dynamic
+- [x] Context provision through Dynamic
 - [ ] Value → JSON
 - [ ] Type checking
 - [ ] Field inits (`ident{"a": 5}`)
