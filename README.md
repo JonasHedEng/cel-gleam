@@ -26,7 +26,7 @@ auth.claims.email_verified && resources.all(r, r.startsWith(auth.claims.email))
 ## Usage
 
 ```sh
-gleam add cel@0.1
+gleam add cel@0.2
 ```
 
 ```gleam
