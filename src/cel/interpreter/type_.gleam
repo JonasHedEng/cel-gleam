@@ -128,4 +128,18 @@ pub fn variables(map: ReferenceMap) -> List(List(String)) {
       #(_, _) -> Error(Nil)
     }
   })
+  |> list.unique
+}
+
+pub fn functions(map: ReferenceMap) -> List(String) {
+  let ReferenceMap(refs) = map
+
+  dict.to_list(refs)
+  |> list.filter_map(fn(pair) {
+    case pair {
+      #(_, Call(name)) -> Ok(name)
+      #(_, _) -> Error(Nil)
+    }
+  })
+  |> list.unique
 }

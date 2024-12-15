@@ -29,3 +29,21 @@ pub fn references_test() {
     ),
   )
 }
+
+pub fn ref_variables_test() {
+  let source = "a.b.c + d.e[f.g] ? [1,2].map(x, x * 2) : list(5)"
+  let assert Ok(expr) = parser.parse(source)
+  let vars = type_.references(expr) |> type_.variables
+
+  vars
+  |> should.equal([["a", "b", "c"], ["d", "e"], ["f", "g"], ["x"]])
+}
+
+pub fn ref_functions_test() {
+  let source = "a.b.c + d.e[f.g] ? [1,2].map(x, x * 2) : list(5)"
+  let assert Ok(expr) = parser.parse(source)
+  let vars = type_.references(expr) |> type_.functions
+
+  vars
+  |> should.equal(["map", "list"])
+}
