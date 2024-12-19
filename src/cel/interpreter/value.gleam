@@ -3,7 +3,8 @@ import gleam/dict
 import gleam/dynamic
 import gleam/option
 
-import decode/zero
+import decode/zero as decode
+import decode/zero.{type Decoder}
 
 pub type Key {
   KeyInt(Int)
@@ -47,28 +48,30 @@ pub type Value {
   Null
 }
 
-fn key_decoder() -> zero.Decoder(Key) {
-  zero.one_of(zero.int |> zero.map(KeyInt), [
-    zero.string |> zero.map(KeyString),
-    zero.bool |> zero.map(KeyBool),
+fn key_decoder() -> Decoder(Key) {
+  decode.one_of(decode.int |> decode.map(KeyInt), [
+    decode.string |> decode.map(KeyString),
+    decode.bool |> decode.map(KeyBool),
   ])
 }
 
-fn value_decoder() -> zero.Decoder(Value) {
-  zero.one_of(zero.int |> zero.map(Int), [
-    zero.float |> zero.map(Float),
-    zero.bool |> zero.map(Bool),
-    zero.string |> zero.map(String),
-    zero.bit_array |> zero.map(Bytes),
-    zero.list(zero.lazy(value_decoder)) |> zero.map(List),
-    zero.dict(key_decoder(), zero.lazy(value_decoder)) |> zero.map(Map),
-    zero.optional(zero.lazy(value_decoder))
-      |> zero.map(fn(opt) { option.unwrap(opt, Null) }),
+fn value_decoder() -> Decoder(Value) {
+  use <- decode.recursive()
+
+  decode.one_of(decode.int |> decode.map(Int), [
+    decode.float |> decode.map(Float),
+    decode.bool |> decode.map(Bool),
+    decode.string |> decode.map(String),
+    decode.bit_array |> decode.map(Bytes),
+    decode.list(value_decoder()) |> decode.map(List),
+    decode.dict(key_decoder(), value_decoder()) |> decode.map(Map),
+    decode.optional(value_decoder())
+      |> decode.map(fn(opt) { option.unwrap(opt, Null) }),
   ])
 }
 
 pub fn decode(
   value input: dynamic.Dynamic,
 ) -> Result(Value, List(dynamic.DecodeError)) {
-  zero.run(input, value_decoder())
+  decode.run(input, value_decoder())
 }
