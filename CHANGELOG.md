@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Type checking:
+  - `type_.check_all` function to type check the expression, including all sub-expressions
+  - `type_.check` function to type check the expression and get the type of it
+
 ## [0.3.1] - 2024-12-19
 
 ### Changed
