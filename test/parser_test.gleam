@@ -180,16 +180,16 @@ pub fn parse_function_call_test() {
         |> p.with_id(3),
       ),
       [
-        p.Ident("x") |> p.with_id(5),
+        p.Ident("x") |> p.with_id(4),
         p.BinaryOperation(
-          p.Ident("x") |> p.with_id(6),
+          p.Ident("x") |> p.with_id(5),
           p.Arithmetic(p.Mul),
-          p.Atom(p.Int(2)) |> p.with_id(7),
+          p.Atom(p.Int(2)) |> p.with_id(6),
         )
-          |> p.with_id(8),
+          |> p.with_id(7),
       ],
     )
-    |> p.with_id(9)
+    |> p.with_id(8)
 
   parsed
   |> should.equal(expected)

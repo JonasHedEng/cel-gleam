@@ -1,6 +1,8 @@
+import gleam/dict.{type Dict}
 import gleam/io
 import gleam/list
 import gleam/option
+import gleam/result
 import gleam/string
 import gleam/yielder.{type Yielder}
 
@@ -20,13 +22,10 @@ import cel/parser.{type ExpressionData}
 // }
 
 pub type Term {
-  // Expr(expr: Context)
-  // Ident(String)
   Known(Type)
   Var(String)
   Num
   List(Term)
-  // Key(Term, Term)
   Arrow(domain: Term, range: Term)
 }
 
@@ -50,7 +49,7 @@ type Constraint {
   Constraint(origin: Int, lhs: Term, rhs: Term)
 }
 
-type Context {
+pub opaque type Context {
   Context(vars: Yielder(String), cons: List(Constraint))
 }
 
@@ -70,57 +69,124 @@ fn var_yielder() {
   })
 }
 
-pub fn infer_types(expr: ExpressionData) -> List(Substitution) {
+pub fn infer_types(expr: ExpressionData) -> #(Context, Dict(String, Term)) {
   let ctx = Context(vars: var_yielder(), cons: [])
 
   let ctx = generate_constraints(ctx, expr)
-  unify(ctx.cons |> list.reverse, [])
+  let assert Ok(subs) = unify(ctx.cons |> list.reverse, dict.new())
+  #(ctx, subs)
 }
 
-fn unify(
-  consts: List(Constraint),
-  subs: List(Substitution),
-) -> List(Substitution) {
-  case consts {
-    [] -> subs
-    [first, ..rest] -> {
-      let Constraint(origin: id, lhs: left, rhs: right) = first
+pub type TypeEnv =
+  Dict(String, Term)
+
+fn unify(constraints: List(Constraint), env: TypeEnv) -> Result(TypeEnv, String) {
+  case constraints {
+    [] -> Ok(env)
+    [Constraint(origin: id, lhs: left, rhs: right), ..rest] -> {
+      let left = substitute_term(env, left)
+      let right = substitute_term(env, right)
 
       case left, right {
-        l, r if l == r -> unify(rest, subs)
-        Var(_), _ -> {
-          let #(rest, subs) =
-            replace_all(rest, subs, occurance: left, with: right)
-          unify(rest, [Substitution(id, left, right), ..subs])
-        }
-        _, Var(_) -> {
-          let #(rest, subs) =
-            replace_all(rest, subs, occurance: right, with: left)
+        l, r if l == r -> unify(rest, env)
 
-          unify(rest, [Substitution(id, right, left), ..subs])
+        Var(name), term -> {
+          case occurs_check(name, term) {
+            True ->
+              Error(
+                "Infinite type: "
+                <> name
+                <> " occurs in "
+                <> string.inspect(term),
+              )
+            False -> {
+              let new_env = dict.insert(env, name, term)
+              let rest = substitute_constraints(new_env, rest)
+              unify(rest, new_env)
+            }
+          }
         }
+
+        term, Var(name) -> {
+          case occurs_check(name, term) {
+            True ->
+              Error(
+                "Infinite type: "
+                <> name
+                <> " occurs in "
+                <> string.inspect(term),
+              )
+            False -> {
+              let new_env = dict.insert(env, name, term)
+              let rest = substitute_constraints(new_env, rest)
+              unify(rest, new_env)
+            }
+          }
+        }
+
         Arrow(l_domain, l_range), Arrow(r_domain, r_range) -> {
-          let rest = [
+          let new_constraints = [
             Constraint(id, l_domain, r_domain),
             Constraint(id, l_range, r_range),
             ..rest
           ]
-
-          unify(rest, subs)
+          unify(new_constraints, env)
         }
-        _, _ -> {
-          let found_subs = subs |> string.inspect
-          io.println("[err] found: " <> found_subs)
 
-          let left_str = string.inspect(left)
-          let right_str = string.inspect(right)
-          let err_msg =
-            "[err]: <" <> left_str <> "> and <" <> right_str <> "> do not unify"
-
-          panic as err_msg
+        List(l_inner), List(r_inner) -> {
+          let new_constraints = [Constraint(id, l_inner, r_inner), ..rest]
+          unify(new_constraints, env)
         }
+
+        _, _ ->
+          Error(
+            "Type mismatch at "
+            <> string.inspect(id)
+            <> ": cannot unify "
+            <> string.inspect(left)
+            <> " with "
+            <> string.inspect(right),
+          )
       }
     }
+  }
+}
+
+fn substitute_term(env: TypeEnv, term: Term) -> Term {
+  case term {
+    Var(name) -> {
+      case dict.get(env, name) {
+        Ok(t) -> substitute_term(env, t)
+        Error(_) -> term
+      }
+    }
+    Arrow(domain, range) ->
+      Arrow(substitute_term(env, domain), substitute_term(env, range))
+    List(inner) -> List(substitute_term(env, inner))
+    _ -> term
+  }
+}
+
+fn substitute_constraints(
+  env: TypeEnv,
+  constraints: List(Constraint),
+) -> List(Constraint) {
+  list.map(constraints, fn(c) {
+    Constraint(
+      origin: c.origin,
+      lhs: substitute_term(env, c.lhs),
+      rhs: substitute_term(env, c.rhs),
+    )
+  })
+}
+
+fn occurs_check(name: String, term: Term) -> Bool {
+  case term {
+    Var(var_name) -> name == var_name
+    Arrow(domain, range) ->
+      occurs_check(name, domain) || occurs_check(name, range)
+    List(inner) -> occurs_check(name, inner)
+    _ -> False
   }
 }
 
@@ -137,32 +203,32 @@ fn replace(left: Term, term: Term, right: Term) -> Term {
   }
 }
 
-fn replace_all(
-  consts: List(Constraint),
-  subs: List(Substitution),
-  occurance left: Term,
-  with right: Term,
-) -> #(List(Constraint), List(Substitution)) {
-  let consts =
-    list.map(consts, fn(c) {
-      let Constraint(origin:, lhs:, rhs:) = c
-      let lhs = replace(left, lhs, right)
-      let rhs = replace(left, rhs, right)
-      Constraint(origin:, lhs:, rhs:)
-    })
+// fn replace_all(
+//   consts: List(Constraint),
+//   subs: List(Substitution),
+//   occurance left: Term,
+//   with right: Term,
+// ) -> #(List(Constraint), List(Substitution)) {
+//   let consts =
+//     list.map(consts, fn(c) {
+//       let Constraint(origin:, lhs:, rhs:) = c
+//       let lhs = replace(left, lhs, right)
+//       let rhs = replace(left, rhs, right)
+//       Constraint(origin:, lhs:, rhs:)
+//     })
 
-  let subs =
-    list.map(subs, fn(s) {
-      let Substitution(id:, var:, is:) = s
-      let var = replace(left, var, right)
-      let is = replace(left, is, right)
-      Substitution(id:, var:, is:)
-    })
+//   let subs =
+//     list.map(subs, fn(s) {
+//       let Substitution(id:, var:, is:) = s
+//       let var = replace(left, var, right)
+//       let is = replace(left, is, right)
+//       Substitution(id:, var:, is:)
+//     })
 
-  #(consts, subs)
-}
+//   #(consts, subs)
+// }
 
-fn get_var(ctx: Context) -> #(Term, Context) {
+fn gen_var(ctx: Context) -> #(Term, Context) {
   let assert yielder.Next(var, vars) = ctx.vars |> yielder.step
   #(Var(var), Context(..ctx, vars:))
 }
@@ -175,20 +241,20 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
   let origin = parser.id(expr)
   case parser.expr(expr) {
     parser.Atom(atom) -> {
-      let #(var, ctx) = get_var(ctx)
+      let #(var, ctx) = gen_var(ctx)
       let con = Constraint(origin:, lhs: var, rhs: term_from_atom(atom))
 
       add(ctx, con)
     }
     parser.Ident(_) -> {
-      let #(var, ctx) = get_var(ctx)
+      let #(var, ctx) = gen_var(ctx)
       let con = Constraint(origin:, lhs: var, rhs: var)
 
       add(ctx, con)
     }
     parser.List(inner_exprs) -> {
-      let #(outer, ctx) = get_var(ctx)
-      let #(inner, ctx) = get_var(ctx)
+      let #(outer, ctx) = gen_var(ctx)
+      let #(inner, ctx) = gen_var(ctx)
 
       let ctx = list.fold(inner_exprs, ctx, generate_constraints)
       let cons =
@@ -203,9 +269,9 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
     parser.Map(_fields) -> todo
     parser.Member(_, _) -> todo
     parser.Ternary(cond, then, otherwise) -> {
-      let #(outer, ctx) = get_var(ctx)
-      let #(cond_var, ctx) = get_var(ctx)
-      let #(inner, ctx) = get_var(ctx)
+      let #(outer, ctx) = gen_var(ctx)
+      let #(cond_var, ctx) = gen_var(ctx)
+      let #(inner, ctx) = gen_var(ctx)
 
       let ctx = generate_constraints(ctx, cond)
       let ctx = generate_constraints(ctx, then)
@@ -228,8 +294,8 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
       Context(..ctx, cons:)
     }
     parser.Unary(op, inner_expr) -> {
-      let #(outer, ctx) = get_var(ctx)
-      let #(inner, ctx) = get_var(ctx)
+      let #(outer, ctx) = gen_var(ctx)
+      let #(inner, ctx) = gen_var(ctx)
 
       let ctx = generate_constraints(ctx, inner_expr)
 
@@ -248,9 +314,9 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
       Context(..ctx, cons: [outer_con, inner_con, ..ctx.cons])
     }
     parser.BinaryOperation(lhs, op, rhs) -> {
-      let #(outer, ctx) = get_var(ctx)
-      let #(lhs_var, ctx) = get_var(ctx)
-      let #(rhs_var, ctx) = get_var(ctx)
+      let #(outer, ctx) = gen_var(ctx)
+      let #(lhs_var, ctx) = gen_var(ctx)
+      let #(rhs_var, ctx) = gen_var(ctx)
 
       let lhs_id = parser.id(lhs)
       let rhs_id = parser.id(rhs)
@@ -297,13 +363,13 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
       Context(..ctx, cons:)
     }
     parser.FunctionCall(_name, this, args) -> {
-      let #(outer, ctx) = get_var(ctx)
-      let #(return, ctx) = get_var(ctx)
+      let #(outer, ctx) = gen_var(ctx)
+      let #(return, ctx) = gen_var(ctx)
 
       let #(this_term, ctx) = case this {
         option.Some(this_expr) -> {
           let ctx = generate_constraints(ctx, this_expr)
-          let #(term, ctx) = get_var(ctx)
+          let #(term, ctx) = gen_var(ctx)
           #([term], ctx)
         }
         option.None -> #([], ctx)
@@ -314,7 +380,7 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
         list.fold(args, #(this_term, ctx), fn(acc, arg) {
           let #(arg_terms, ctx) = acc
           let ctx = generate_constraints(ctx, arg)
-          let #(arg_var, ctx) = get_var(ctx)
+          let #(arg_var, ctx) = gen_var(ctx)
 
           #([arg_var, ..arg_terms], ctx)
         })
@@ -328,4 +394,33 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> Context {
       add(ctx, con)
     }
   }
+}
+
+pub fn mapped_types(ctx: Context, env: Dict(String, Term)) -> Dict(Int, Term) {
+  ctx.cons
+  |> list.filter_map(fn(con) {
+    case con.lhs {
+      Var(name) -> {
+        case dict.get(env, name) {
+          Ok(found) -> Ok(#(con.origin, found))
+          Error(_) -> {
+            io.debug(env)
+            io.println(
+              "didn't find '"
+              <> name
+              <> "' in term refs, lost: "
+              <> string.inspect(con),
+            )
+            Error(Nil)
+          }
+        }
+      }
+      other -> {
+        io.println("got unexpected term: " <> string.inspect(other))
+
+        Error(Nil)
+      }
+    }
+  })
+  |> dict.from_list
 }

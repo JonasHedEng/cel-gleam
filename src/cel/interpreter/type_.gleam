@@ -1,5 +1,6 @@
 import gleam/bool
 import gleam/dict.{type Dict}
+import gleam/io
 import gleam/list
 import gleam/option
 import gleam/result
@@ -98,8 +99,8 @@ fn collect_id_references(
 
       let enumerated =
         expressions
-        |> list.fold(acc, fn(acc, expr) {
-          collect_id_references(expr, acc, func_types)
+        |> list.fold(acc, fn(acc, e) {
+          collect_id_references(e, acc, func_types)
         })
 
       let func_type =

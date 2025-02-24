@@ -10,10 +10,10 @@ pub fn references_test() {
   let assert Ok(expr) = parser.parse(source)
   let type_.ReferenceMap(refs) = type_.references(expr)
 
-  let assert Ok(type_.Call(name: "map", ..)) = refs |> dict.get(17)
-  let assert Ok(type_.Call(name: "list", ..)) = refs |> dict.get(20)
+  let assert Ok(type_.Call(name: "map", ..)) = refs |> dict.get(16)
+  let assert Ok(type_.Call(name: "list", ..)) = refs |> dict.get(19)
 
-  let refs = dict.drop(refs, [17, 20])
+  let refs = dict.drop(refs, [16, 19])
 
   refs
   |> should.equal(
@@ -23,12 +23,12 @@ pub fn references_test() {
       #(6, Variable(["f", "g"])),
       #(9, Constant(Int(1))),
       #(10, Constant(Int(2))),
+      #(12, Variable(["x"])),
       #(13, Variable(["x"])),
-      #(14, Variable(["x"])),
-      #(15, Constant(Int(2))),
-      // #(17, Call("map", fn(_) { Ok(type_.ListT(type_.DynamicT)) })),
-      #(19, Constant(Int(5))),
-      // #(20, Call("list", fn(_) { Ok(type_.DynamicT) })),
+      #(14, Constant(Int(2))),
+      // #(16, Call("map", fn(_) { Ok(type_.ListT(type_.DynamicT)) })),
+      #(18, Constant(Int(5))),
+      // #(19, Call("list", fn(_) { Ok(type_.DynamicT) })),
     ]),
   )
 }
