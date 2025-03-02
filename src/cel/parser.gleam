@@ -3,7 +3,6 @@
 
 import gleam/float
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/pair
@@ -525,7 +524,10 @@ fn unexpected(tokens: Tokens) -> Result(a, Error) {
 
 fn tokenize(source: String) -> Result(Tokens, Error) {
   let lexed =
-    t.new(source) |> t.discard_comments |> t.discard_whitespace |> t.lex
+    t.new(source)
+    |> t.discard_comments
+    |> t.discard_whitespace
+    |> t.lex
 
   let check_last_token = case list.last(lexed) {
     Ok(#(t.UnexpectedGrapheme(s), t.Position(offset, _))) ->

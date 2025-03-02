@@ -161,7 +161,7 @@ pub fn all(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
 }
 
 pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
-  let ctx.FunctionContext(name: name, ctx: ctx, this: _this, args: args) = ftx
+  let ctx.FunctionContext(name:, ctx:, this: _this, args:) = ftx
 
   // TODO: Ensure `this` isn't set
 

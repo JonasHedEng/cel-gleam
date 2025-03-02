@@ -29,16 +29,16 @@ pub type InferenceError {
 pub type Term {
   Known(Type)
   Var(String)
+  Iter(Term)
   Num
-  List(Term)
   Arrow(domain: Term, range: Term)
 }
 
 fn term_from_atom(atom: parser.Atom) -> Term {
   case atom {
-    parser.Int(_) -> Num
-    parser.UInt(_) -> Num
-    parser.Float(_) -> Num
+    parser.Int(_) -> Known(type_.IntT)
+    parser.UInt(_) -> Known(type_.UIntT)
+    parser.Float(_) -> Known(type_.FloatT)
     parser.Bool(_) -> Known(type_.BoolT)
     parser.String(_) -> Known(type_.StringT)
     parser.Bytes(_) -> Known(type_.BytesT)
@@ -55,28 +55,93 @@ type Constraint {
 }
 
 pub opaque type Context {
-  Context(vars: Yielder(String), cons: List(Constraint))
+  Context(
+    vars: Yielder(String),
+    cons: List(Constraint),
+    fn_sigs: Dict(String, #(List(Term), Term)),
+  )
 }
 
-fn var_yielder() {
-  yielder.unfold(#(0, ""), fn(acc) {
-    let #(counter, prefix) = acc
-    let assert Ok(codepoint) = { counter % 25 } + 97 |> string.utf_codepoint
+/// Create a `context.Context` with the default functions.
+/// - **expr**: CEL Expression to infer types for.
+/// - **function_signatures**: An optional `Dict` of function names along with their type signatures.
+///
+/// `infer_types` will do its best without any function type signatures provided but will not be able to figure out certain expression type relations without the provided type signatures.
+pub fn infer_types(
+  for expr: ExpressionData,
+  with function_signatures: Dict(String, #(List(Term), Term)),
+) -> Dict(Int, Term) {
+  let vars =
+    yielder.unfold(#(0, ""), fn(acc) {
+      let #(counter, prefix) = acc
+      let assert Ok(codepoint) = { counter % 25 } + 97 |> string.utf_codepoint
 
-    case [codepoint] |> string.from_utf_codepoints {
-      "z" -> yielder.Next(prefix <> "z", #(counter + 1, prefix <> "_"))
-      letter -> yielder.Next(prefix <> letter, #(counter + 1, prefix))
-    }
-  })
-}
+      case [codepoint] |> string.from_utf_codepoints {
+        "z" -> yielder.Next(prefix <> "z", #(counter + 1, prefix <> "_"))
+        letter -> yielder.Next(prefix <> letter, #(counter + 1, prefix))
+      }
+    })
 
-pub fn infer_types(expr: ExpressionData) -> Dict(Int, Term) {
-  let ctx = Context(vars: var_yielder(), cons: [])
+  let ctx =
+    Context(vars:, cons: [], fn_sigs: function_signatures)
+    |> rewrite_fn_sig_vars
 
   let #(ctx, _) = generate_constraints(ctx, expr)
   let assert Ok(env) = unify(ctx.cons |> list.reverse, dict.new())
-
   ref_map_terms(ctx, env)
+}
+
+fn rewrite_term_rec(
+  ctx: Context,
+  map: Dict(String, Term),
+  term: Term,
+) -> #(Context, Dict(String, Term), Term) {
+  case term {
+    Num | Known(_) -> #(ctx, map, term)
+    Arrow(domain: d, range: r) -> {
+      let #(ctx, map, domain) = rewrite_term_rec(ctx, map, d)
+      let #(ctx, map, range) = rewrite_term_rec(ctx, map, r)
+      #(ctx, map, Arrow(domain:, range:))
+    }
+    Iter(inner) -> {
+      let #(ctx, map, new_inner) = rewrite_term_rec(ctx, map, inner)
+      #(ctx, map, Iter(new_inner))
+    }
+    Var(old_name) -> {
+      case dict.get(map, old_name) {
+        Ok(new) -> #(ctx, map, new)
+        Error(_) -> {
+          let #(new, ctx) = gen_var(ctx)
+          let map = dict.insert(map, old_name, new)
+
+          #(ctx, map, new)
+        }
+      }
+    }
+  }
+}
+
+fn rewrite_fn_sig_vars(ctx: Context) -> Context {
+  let #(ctx, new_fn_sigs) =
+    ctx.fn_sigs
+    |> dict.to_list
+    |> list.fold(#(ctx, []), fn(sigs_acc, sig) {
+      let map = dict.new()
+      let #(ctx, sigs) = sigs_acc
+      let #(name, #(args, return)) = sig
+
+      let assert #(ctx, _, [new_return, ..new_args]) =
+        list.flatten([args, [return]])
+        |> list.fold(#(ctx, map, []), fn(terms_acc, term) {
+          let #(ctx, map, terms) = terms_acc
+          let #(ctx, map, new_term) = rewrite_term_rec(ctx, map, term)
+          #(ctx, map, [new_term, ..terms])
+        })
+
+      #(ctx, [#(name, #(new_args |> list.reverse, new_return)), ..sigs])
+    })
+
+  Context(..ctx, fn_sigs: new_fn_sigs |> dict.from_list)
 }
 
 fn unify(
@@ -91,6 +156,14 @@ fn unify(
 
       case left, right {
         l, r if l == r -> unify(rest, env)
+
+        Known(type_.IntT), Num
+        | Known(type_.UIntT), Num
+        | Known(type_.FloatT), Num
+        | Num, Known(type_.IntT)
+        | Num, Known(type_.UIntT)
+        | Num, Known(type_.FloatT)
+        -> unify(rest, env)
 
         Var(name), term | term, Var(name) -> {
           use _ <- result.try(occurs_check(Var(name), term))
@@ -110,7 +183,7 @@ fn unify(
           unify(new_constraints, env)
         }
 
-        List(l_inner), List(r_inner) -> {
+        Iter(l_inner), Iter(r_inner) -> {
           let new_constraints = [Constraint(id, l_inner, r_inner), ..rest]
           unify(new_constraints, env)
         }
@@ -136,9 +209,9 @@ fn substitute_term(
       let #(r, env) = substitute_term(env, range)
       #(Arrow(d, r), env)
     }
-    List(inner) -> {
+    Iter(inner) -> {
       let #(i, env) = substitute_term(env, inner)
-      #(List(i), env)
+      #(Iter(i), env)
     }
     _ -> #(term, env)
   }
@@ -166,7 +239,7 @@ fn occurs_check(left: Term, right: Term) -> Result(Nil, InferenceError) {
       use _ <- result.try(occurs_check(left, domain))
       occurs_check(left, range)
     }
-    List(inner) -> occurs_check(left, inner)
+    Iter(inner) -> occurs_check(left, inner)
     _ if left == right -> Error(InfiniteType(term: left, occurs_in: right))
     _ -> Ok(Nil)
   }
@@ -208,7 +281,7 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> #(Context, Term) 
           add(ctx, Constraint(origin: inner_id, lhs: inner, rhs: inner_var))
         })
 
-      let con = Constraint(origin:, lhs: outer, rhs: List(inner))
+      let con = Constraint(origin:, lhs: outer, rhs: Iter(inner))
       #(add(ctx, con), outer)
     }
     parser.Map(_fields) -> todo
@@ -292,7 +365,7 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> #(Context, Term) 
         parser.Relation(parser.In) -> {
           let lhs_con = Constraint(origin: lhs_id, lhs: lhs_var, rhs: lhs_var)
           let rhs_con =
-            Constraint(origin: rhs_id, lhs: rhs_var, rhs: List(lhs_var))
+            Constraint(origin: rhs_id, lhs: rhs_var, rhs: Iter(lhs_var))
 
           let con = Constraint(origin:, lhs: outer, rhs: Known(type_.BoolT))
           [con, rhs_con, lhs_con, ..ctx.cons]
@@ -314,7 +387,7 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> #(Context, Term) 
 
       #(Context(..ctx, cons:), outer)
     }
-    parser.FunctionCall(_name, this, args) -> {
+    parser.FunctionCall(name, this, args) -> {
       let #(outer, ctx) = gen_var(ctx)
       let #(return, ctx) = gen_var(ctx)
 
@@ -323,8 +396,21 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> #(Context, Term) 
         option.None -> args
       }
 
+      let #(sig_args, ctx) = case dict.get(ctx.fn_sigs, name) {
+        Ok(#(sig_args, sig_return)) -> {
+          let a =
+            sig_args
+            |> list.index_map(fn(arg, i) { #(i, arg) })
+            |> dict.from_list
+          let ctx = add(ctx, Constraint(origin:, lhs: return, rhs: sig_return))
+
+          #(a, ctx)
+        }
+        Error(_) -> #(dict.new(), ctx)
+      }
+
       let #(arrow_parts, ctx) =
-        list.fold(args, #([], ctx), fn(acc, arg) {
+        list.index_fold(args, #([], ctx), fn(acc, arg, i) {
           let #(arg_terms, ctx) = acc
 
           let origin = parser.id(arg)
@@ -333,13 +419,20 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> #(Context, Term) 
 
           let ctx = add(ctx, Constraint(origin:, lhs: arg_var, rhs: inner_var))
 
+          let ctx = case dict.get(sig_args, i) {
+            Ok(sig_arg) ->
+              add(ctx, Constraint(origin:, lhs: arg_var, rhs: sig_arg))
+            Error(_) -> ctx
+          }
+
           #([arg_var, ..arg_terms], ctx)
         })
 
-      let assert Ok(arrow) =
+      let arrow =
         [return, ..arrow_parts]
         |> list.reverse
         |> list.reduce(Arrow)
+        |> result.unwrap(return)
 
       let con = Constraint(origin:, lhs: outer, rhs: arrow)
       #(add(ctx, con), outer)
@@ -353,9 +446,8 @@ fn unify_constraint_origin(cons: List(Constraint)) -> Dict(Int, #(String, Term))
 
   case entry, con.rhs {
     option.None, _
-    | option.Some(#(_, Var(_))), Num
     | option.Some(#(_, Var(_))), Known(_)
-    | option.Some(#(_, Var(_))), List(_)
+    | option.Some(#(_, Var(_))), Iter(_)
     -> {
       let assert Var(label) = con.lhs
       #(label, con.rhs)
