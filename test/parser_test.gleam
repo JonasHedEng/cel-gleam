@@ -180,16 +180,16 @@ pub fn parse_function_call_test() {
         |> p.with_id(3),
       ),
       [
-        p.Ident("x") |> p.with_id(5),
+        p.Ident("x") |> p.with_id(4),
         p.BinaryOperation(
-          p.Ident("x") |> p.with_id(6),
+          p.Ident("x") |> p.with_id(5),
           p.Arithmetic(p.Mul),
-          p.Atom(p.Int(2)) |> p.with_id(7),
+          p.Atom(p.Int(2)) |> p.with_id(6),
         )
-          |> p.with_id(8),
+          |> p.with_id(7),
       ],
     )
-    |> p.with_id(9)
+    |> p.with_id(8)
 
   parsed
   |> should.equal(expected)
@@ -200,6 +200,80 @@ pub fn parse_optional_ident_dot_prefix_test() {
 
   let assert Ok(parsed) = p.parse(source)
   let expected = p.Ident("ident") |> p.with_id(0)
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_negative_int_test() {
+  let map_src = "{'a': -1}"
+
+  let assert Ok(parsed) = p.parse(map_src)
+
+  let expected =
+    p.Map([
+      #(
+        p.Atom(p.String("a")) |> p.with_id(0),
+        p.Unary(p.UnarySub, p.Atom(p.Int(1)) |> p.with_id(1)) |> p.with_id(2),
+      ),
+    ])
+    |> p.with_id(3)
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_unary_minus_test() {
+  let map_src = "{'a': -b}"
+
+  let assert Ok(parsed) = p.parse(map_src)
+
+  let expected =
+    p.Map([
+      #(
+        p.Atom(p.String("a")) |> p.with_id(0),
+        p.Unary(p.UnarySub, p.Ident("b") |> p.with_id(1)) |> p.with_id(2),
+      ),
+    ])
+    |> p.with_id(3)
+
+  parsed
+  |> should.equal(expected)
+}
+
+pub fn parse_list_with_negative_int_test() {
+  let map_src = "[a + 5u, y, -3]"
+
+  let assert Ok(parsed) = p.parse(map_src)
+
+  // ExpressionData(
+  //   List([
+  //     ExpressionData(
+  //       BinaryOperation(
+  //         ExpressionData(Ident("a"), 0),
+  //         Arithmetic(Add),
+  //         ExpressionData(Atom(UInt(5)), 1),
+  //       ),
+  //       2,
+  //     ),
+  //     ExpressionData(Ident("y"), 3),
+  //     ExpressionData(Unary(UnarySub, ExpressionData(Atom(Int(3)), 4)), 5),
+  //   ]),
+  //   6,
+  // )
+
+  let expected =
+    p.List([
+      p.BinaryOperation(
+        p.Ident("a") |> p.with_id(0),
+        p.Arithmetic(p.Add),
+        p.Atom(p.UInt(5)) |> p.with_id(1),
+      )
+        |> p.with_id(2),
+      p.Ident("y") |> p.with_id(3),
+      p.Unary(p.UnarySub, p.Atom(p.Int(3)) |> p.with_id(4)) |> p.with_id(5),
+    ])
+    |> p.with_id(6)
 
   parsed
   |> should.equal(expected)

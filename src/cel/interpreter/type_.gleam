@@ -7,6 +7,13 @@ import gleam/result
 import cel/interpreter/value.{type Value}
 import cel/parser.{type ExpressionData}
 
+pub type TypeError {
+  UnexpectedType(in: Int, got: Type, expected: Type)
+  InvalidKeyType(in: Int, got: Type)
+  InvalidFunctionArgs(name: String, this: Type, args: List(Type))
+  InvalidBinaryOpForTypes(in: Int, lhs: Type, rhs: Type)
+}
+
 /// A CEL type
 pub type Type {
   DynamicT
@@ -91,8 +98,8 @@ fn collect_id_references(
 
       let enumerated =
         expressions
-        |> list.fold(acc, fn(acc, expr) {
-          collect_id_references(expr, acc, func_types)
+        |> list.fold(acc, fn(acc, e) {
+          collect_id_references(e, acc, func_types)
         })
 
       let func_type =
@@ -133,7 +140,7 @@ fn collect_id_references(
 }
 
 pub type FuncType =
-  fn(List(Type)) -> Result(Type, Error)
+  fn(List(Type)) -> Result(Type, TypeError)
 
 fn std_func_types() -> Dict(String, FuncType) {
   let expect_list_reduce_to_bool = fn(name: String) -> FuncType {
@@ -231,13 +238,6 @@ pub fn functions(map: ReferenceMap) -> List(String) {
   |> list.unique
 }
 
-pub type Error {
-  UnexpectedType(in: Int, got: Type, expected: Type)
-  InvalidKeyType(in: Int, got: Type)
-  InvalidFunctionArgs(name: String, this: Type, args: List(Type))
-  InvalidBinaryOpForTypes(in: Int, lhs: Type, rhs: Type)
-}
-
 fn expected(
   in expr: parser.ExpressionData,
   expected expected: Type,
@@ -250,7 +250,7 @@ fn expected(
 pub fn check_all(
   for expr: ExpressionData,
   references ref_map: ReferenceMap,
-) -> Result(Dict(Int, Type), Error) {
+) -> Result(Dict(Int, Type), TypeError) {
   use #(_, type_map) <- result.map(check_impl(expr, ref_map, dict.new()))
   type_map
 }
@@ -258,7 +258,7 @@ pub fn check_all(
 /// Performs type checking on the full expression and returns the outermost type of the
 /// whole expression. All variables used will be considered Dynamic until used.
 ///
-pub fn check(expr: ExpressionData) -> Result(Type, Error) {
+pub fn check(expr: ExpressionData) -> Result(Type, TypeError) {
   let ref_map = references(expr)
   use #(outermost, _) <- result.map(check_impl(expr, ref_map, dict.new()))
   outermost
@@ -268,7 +268,7 @@ fn check_key_type(
   expr: ExpressionData,
   ref_map: ReferenceMap,
   type_map: Dict(Int, Type),
-) -> Result(#(Type, Dict(Int, Type)), Error) {
+) -> Result(#(Type, Dict(Int, Type)), TypeError) {
   let id = parser.id(expr)
   use #(key_type, type_map) <- result.try(check_impl(expr, ref_map, type_map))
   case key_type {
@@ -281,7 +281,7 @@ fn reduce_type(
   for expr: ExpressionData,
   prev prev_type: Type,
   current current_type: Type,
-) -> Result(Type, Error) {
+) -> Result(Type, TypeError) {
   case prev_type, current_type {
     ListT(prev_type), ListT(current_type) -> {
       use inner <- result.map(reduce_type(expr, prev_type, current_type))
@@ -304,7 +304,7 @@ fn check_impl(
   expr: ExpressionData,
   ref_map: ReferenceMap,
   type_map: Dict(Int, Type),
-) -> Result(#(Type, Dict(Int, Type)), Error) {
+) -> Result(#(Type, Dict(Int, Type)), TypeError) {
   let id = parser.id(expr)
 
   case parser.expr(expr) {

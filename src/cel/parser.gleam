@@ -436,6 +436,7 @@ fn after_expression(
     // Member attribute
     [#(t.Dot, _), #(t.Ident(label), _), ..tokens] -> {
       let #(expr, ctx) = Member(parsed, Attribute(label)) |> make(ctx, tokens)
+
       after_expression(ctx, expr)
     }
 
@@ -461,7 +462,7 @@ fn after_expression(
           call(ctx, [], ident, None)
         }
         Member(this, Attribute(ident)) -> {
-          call(ctx, [], ident, Some(this))
+          call(Ctx(..ctx, id: parsed.id), [], ident, Some(this))
         }
         _ -> Error(UnexpectedToken(t.LeftParen, pos.byte_offset))
       }
@@ -498,6 +499,7 @@ fn call(
           let #(expr, ctx) =
             FunctionCall(ident, this, list.reverse(arguments))
             |> make(ctx, tokens)
+
           after_expression(ctx, expr)
         }
         _ -> unexpected(ctx.tokens)
@@ -522,7 +524,10 @@ fn unexpected(tokens: Tokens) -> Result(a, Error) {
 
 fn tokenize(source: String) -> Result(Tokens, Error) {
   let lexed =
-    t.new(source) |> t.discard_comments |> t.discard_whitespace |> t.lex
+    t.new(source)
+    |> t.discard_comments
+    |> t.discard_whitespace
+    |> t.lex
 
   let check_last_token = case list.last(lexed) {
     Ok(#(t.UnexpectedGrapheme(s), t.Position(offset, _))) ->
