@@ -1,10 +1,9 @@
-import cel/parser
 import gleam/dict
 import gleam/dynamic
+import gleam/dynamic/decode.{type DecodeError, type Decoder}
 import gleam/option
 
-import decode/zero as decode
-import decode/zero.{type Decoder}
+import cel/parser
 
 pub type Key {
   KeyInt(Int)
@@ -70,8 +69,6 @@ fn value_decoder() -> Decoder(Value) {
   ])
 }
 
-pub fn decode(
-  value input: dynamic.Dynamic,
-) -> Result(Value, List(dynamic.DecodeError)) {
+pub fn decode(value input: dynamic.Dynamic) -> Result(Value, List(DecodeError)) {
   decode.run(input, value_decoder())
 }

@@ -8,7 +8,6 @@ import gleam/string
 import cel/interpreter/context as ctx
 import cel/interpreter/error.{type ExecutionError}
 import cel/interpreter/evaluate
-import cel/interpreter/value as v
 import cel/interpreter/value.{type Value}
 import cel/parser as p
 
@@ -26,8 +25,8 @@ fn filter_impl(
       use cond <- result.try(evaluate.evaluate_expr(expr, inner_ctx))
 
       use filtered <- result.try(case cond {
-        v.Bool(True) -> Ok([item, ..filtered])
-        v.Bool(False) -> Ok(filtered)
+        value.Bool(True) -> Ok([item, ..filtered])
+        value.Bool(False) -> Ok(filtered)
         _ ->
           Error(error.UnexpectedType(
             expected: [type_.BoolT],
@@ -50,7 +49,7 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   })
 
   case this {
-    Some(v.List(items)) -> {
+    Some(value.List(items)) -> {
       filter_impl(
         ctx: ctx,
         ident: ident,
@@ -58,7 +57,7 @@ pub fn filter(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
         filtered: [],
         expr: expr,
       )
-      |> result.map(v.List)
+      |> result.map(value.List)
     }
     Some(other) ->
       Error(error.UnexpectedType(
@@ -97,9 +96,9 @@ pub fn map(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   })
 
   case this {
-    Some(v.List(items)) -> {
+    Some(value.List(items)) -> {
       map_impl(ctx: ctx, ident: ident, items: items, mapped: [], expr: expr)
-      |> result.map(v.List)
+      |> result.map(value.List)
     }
     Some(other) ->
       Error(error.UnexpectedType(
@@ -124,8 +123,8 @@ fn all_impl(
       use cond <- result.try(evaluate.evaluate_expr(expr, inner_ctx))
 
       case cond {
-        v.Bool(True) -> all_impl(ctx, ident, rest, expr)
-        v.Bool(False) -> Ok(False)
+        value.Bool(True) -> all_impl(ctx, ident, rest, expr)
+        value.Bool(False) -> Ok(False)
         _ ->
           Error(error.UnexpectedType(
             expected: [type_.BoolT],
@@ -146,9 +145,9 @@ pub fn all(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   })
 
   case this {
-    Some(v.List(items)) -> {
+    Some(value.List(items)) -> {
       all_impl(ctx: ctx, ident: ident, items: items, expr: expr)
-      |> result.map(v.Bool)
+      |> result.map(value.Bool)
     }
     Some(other) ->
       Error(error.UnexpectedType(
@@ -171,9 +170,9 @@ pub fn size(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   })
 
   case expr {
-    v.List(items) -> Ok(v.Int(list.length(items)))
-    v.Map(items) -> Ok(v.Int(dict.size(items)))
-    v.String(str) -> Ok(v.Int(string.length(str)))
+    value.List(items) -> Ok(value.Int(list.length(items)))
+    value.Map(items) -> Ok(value.Int(dict.size(items)))
+    value.String(str) -> Ok(value.Int(string.length(str)))
     other ->
       Error(error.UnexpectedType(
         expected: [
@@ -219,8 +218,8 @@ fn exists_impl(
       use cond <- result.try(evaluate.evaluate_expr(expr, inner_ctx))
 
       case cond {
-        v.Bool(True) -> Ok(True)
-        v.Bool(False) -> exists_impl(ctx, ident, rest, expr)
+        value.Bool(True) -> Ok(True)
+        value.Bool(False) -> exists_impl(ctx, ident, rest, expr)
         _ ->
           Error(error.UnexpectedType(
             expected: [type_.BoolT],
@@ -241,9 +240,9 @@ pub fn exists(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   })
 
   case this {
-    Some(v.List(items)) -> {
+    Some(value.List(items)) -> {
       exists_impl(ctx: ctx, ident: ident, items: items, expr: expr)
-      |> result.map(v.Bool)
+      |> result.map(value.Bool)
     }
     Some(other) ->
       Error(error.UnexpectedType(
@@ -269,9 +268,9 @@ fn exists_one_impl(
       use cond <- result.try(evaluate.evaluate_expr(expr, inner_ctx))
 
       case cond, found {
-        v.Bool(True), True -> Ok(False)
-        v.Bool(True), False -> exists_one_impl(ctx, ident, rest, expr, True)
-        v.Bool(False), _ -> exists_one_impl(ctx, ident, rest, expr, found)
+        value.Bool(True), True -> Ok(False)
+        value.Bool(True), False -> exists_one_impl(ctx, ident, rest, expr, True)
+        value.Bool(False), _ -> exists_one_impl(ctx, ident, rest, expr, found)
         _, _ ->
           Error(error.UnexpectedType(
             expected: [type_.BoolT],
@@ -292,7 +291,7 @@ pub fn exists_one(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
   })
 
   case this {
-    Some(v.List(items)) -> {
+    Some(value.List(items)) -> {
       exists_one_impl(
         ctx: ctx,
         ident: ident,
@@ -300,7 +299,7 @@ pub fn exists_one(ftx: ctx.FunctionContext) -> Result(Value, ExecutionError) {
         expr: expr,
         found: False,
       )
-      |> result.map(v.Bool)
+      |> result.map(value.Bool)
     }
     Some(other) ->
       Error(error.UnexpectedType(

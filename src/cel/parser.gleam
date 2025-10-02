@@ -554,5 +554,5 @@ fn parse_(tokens: Tokens) -> Result(ExpressionData, Error) {
 
 pub fn parse(source: String) -> Result(ExpressionData, Error) {
   tokenize(source)
-  |> result.then(parse_)
+  |> result.try(parse_)
 }

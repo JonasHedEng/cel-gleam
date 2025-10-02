@@ -1,13 +1,15 @@
 import gleam/dict
 import gleam/dynamic
+import gleam/dynamic/decode
 import gleam/json
 import gleam/list
+
 import gleeunit/should
 
 import cel/interpreter/value
 
 pub fn decode_int_test() {
-  let input = dynamic.from(235)
+  let input = dynamic.int(235)
 
   let assert Ok(value) = value.decode(input)
 
@@ -16,7 +18,7 @@ pub fn decode_int_test() {
 }
 
 pub fn decode_string_test() {
-  let input = dynamic.from("fish")
+  let input = dynamic.string("fish")
 
   let assert Ok(value) = value.decode(input)
 
@@ -26,7 +28,7 @@ pub fn decode_string_test() {
 
 pub fn decode_list_test() {
   let nums = [1, 2, 3]
-  let input = dynamic.from(nums)
+  let input = dynamic.list(nums |> list.map(dynamic.int))
 
   let assert Ok(value) = value.decode(input)
 
@@ -35,7 +37,7 @@ pub fn decode_list_test() {
 }
 
 pub fn decode_optional_test() {
-  let input = dynamic.from(Nil)
+  let input = dynamic.nil()
   let assert Ok(value) = value.decode(input)
 
   value
@@ -43,11 +45,12 @@ pub fn decode_optional_test() {
 }
 
 pub fn decode_json_test() {
-  let assert Ok(value) =
-    json.decode(
+  let assert Ok(json_value) =
+    json.parse(
       from: "{\"a\": 5, \"b\": {\"bb\": [6, 8]}, \"c\": null}",
-      using: value.decode,
+      using: decode.dynamic,
     )
+  let assert Ok(value) = value.decode(json_value)
 
   let expected =
     value.Map(

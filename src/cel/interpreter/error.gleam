@@ -1,4 +1,4 @@
-import gleam/dynamic
+import gleam/dynamic/decode.{type DecodeError}
 
 import cel/interpreter/type_.{type Type}
 import cel/interpreter/value.{type Value}
@@ -10,7 +10,7 @@ pub type ContextError {
   NoSuchKey(parser.Member)
   InvalidMemberParent(parent_type: Type, member: parser.Member)
 
-  Decode(dynamic.DecodeErrors)
+  Decode(List(DecodeError))
 }
 
 pub type ExecutionError {
