@@ -193,15 +193,6 @@ fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
     "[" <> rest -> #(advance(lexer, rest, 1), token(lexer, LeftSquare, 1))
     "]" <> rest -> #(advance(lexer, rest, 1), token(lexer, RightSquare, 1))
 
-    // Other Punctuation
-    "@" <> rest -> #(advance(lexer, rest, 1), token(lexer, At, 1))
-    ":" <> rest -> #(advance(lexer, rest, 1), token(lexer, Colon, 1))
-    "?" <> rest -> #(advance(lexer, rest, 1), token(lexer, QuestionMark, 1))
-    "," <> rest -> #(advance(lexer, rest, 1), token(lexer, Comma, 1))
-    "." <> rest -> #(advance(lexer, rest, 1), token(lexer, Dot, 1))
-    "#" <> rest -> #(advance(lexer, rest, 1), token(lexer, Hash, 1))
-    "!" <> rest -> #(advance(lexer, rest, 1), token(lexer, ExclamationMark, 1))
-
     // Relation operators
     "!=" <> rest -> #(advance(lexer, rest, 2), token(lexer, NotEquals, 2))
     "==" <> rest -> #(advance(lexer, rest, 2), token(lexer, Equals, 2))
@@ -211,6 +202,15 @@ fn next(lexer: Lexer) -> #(Lexer, #(Token, Position)) {
     "<" <> rest -> #(advance(lexer, rest, 1), token(lexer, LessThan, 1))
     ">=" <> rest -> #(advance(lexer, rest, 2), token(lexer, GreaterThanEq, 2))
     ">" <> rest -> #(advance(lexer, rest, 1), token(lexer, GreaterThan, 1))
+
+    // Other Punctuation
+    "@" <> rest -> #(advance(lexer, rest, 1), token(lexer, At, 1))
+    ":" <> rest -> #(advance(lexer, rest, 1), token(lexer, Colon, 1))
+    "?" <> rest -> #(advance(lexer, rest, 1), token(lexer, QuestionMark, 1))
+    "," <> rest -> #(advance(lexer, rest, 1), token(lexer, Comma, 1))
+    "." <> rest -> #(advance(lexer, rest, 1), token(lexer, Dot, 1))
+    "#" <> rest -> #(advance(lexer, rest, 1), token(lexer, Hash, 1))
+    "!" <> rest -> #(advance(lexer, rest, 1), token(lexer, ExclamationMark, 1))
 
     // Int Operators
     "+" <> rest -> #(advance(lexer, rest, 1), token(lexer, Plus, 1))
@@ -506,11 +506,10 @@ fn lex_bytes(
           use <- bool.guard(byte_size != 2, invalid)
 
           int.base_parse(hex_digits, 16)
-          |> result.replace_error(invalid)
           |> result.map(fn(value) {
             lex_bytes(lexer, bit_array.append(content, <<value>>), init, start)
           })
-          |> result.unwrap_both
+          |> result.unwrap(invalid)
         }
         // Lex octet byte sequence
         _ -> {
@@ -527,11 +526,10 @@ fn lex_bytes(
           use <- bool.guard(byte_size != 3, invalid)
 
           int.base_parse(octet_digits, 8)
-          |> result.replace_error(invalid)
           |> result.map(fn(value) {
             lex_bytes(lexer, bit_array.append(content, <<value>>), init, start)
           })
-          |> result.unwrap_both
+          |> result.unwrap(invalid)
         }
       }
     }
