@@ -26,4 +26,5 @@ pub type ExecutionError {
 
   InvalidFunctionArgs(function: String)
   FunctionExpectedThis(function: String)
+  ConversionError(value: String, to: String)
 }

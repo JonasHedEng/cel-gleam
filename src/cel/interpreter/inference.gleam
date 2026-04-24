@@ -1,10 +1,8 @@
 import gleam/dict.{type Dict}
-import gleam/io
 import gleam/list
 import gleam/option
 import gleam/result
 import gleam/string
-import gleam/yielder.{type Yielder}
 
 import cel/interpreter/type_.{type Type}
 import cel/parser.{type ExpressionData}
@@ -54,9 +52,29 @@ type Constraint {
   Constraint(origin: Int, lhs: Term, rhs: Term)
 }
 
+type IdGenerator {
+  IdGenerator(prefix: String, counter: Int)
+}
+
+fn next_id(generator: IdGenerator) -> #(String, IdGenerator) {
+  let IdGenerator(prefix:, counter:) = generator
+  let assert Ok(codepoint) = { counter % 25 } + 97 |> string.utf_codepoint
+
+  case [codepoint] |> string.from_utf_codepoints {
+    "z" -> #(
+      prefix <> "z",
+      IdGenerator(prefix: prefix <> "_", counter: counter + 1),
+    )
+    letter -> #(
+      prefix <> letter,
+      IdGenerator(prefix: prefix, counter: counter + 1),
+    )
+  }
+}
+
 pub opaque type Context {
   Context(
-    vars: Yielder(String),
+    vars: IdGenerator,
     cons: List(Constraint),
     fn_sigs: Dict(String, #(List(Term), Term)),
   )
@@ -71,16 +89,7 @@ pub fn infer_types(
   for expr: ExpressionData,
   with function_signatures: Dict(String, #(List(Term), Term)),
 ) -> Dict(Int, Term) {
-  let vars =
-    yielder.unfold(#(0, ""), fn(acc) {
-      let #(counter, prefix) = acc
-      let assert Ok(codepoint) = { counter % 25 } + 97 |> string.utf_codepoint
-
-      case [codepoint] |> string.from_utf_codepoints {
-        "z" -> yielder.Next(prefix <> "z", #(counter + 1, prefix <> "_"))
-        letter -> yielder.Next(prefix <> letter, #(counter + 1, prefix))
-      }
-    })
+  let vars = IdGenerator(prefix: "", counter: 0)
 
   let ctx =
     Context(vars:, cons: [], fn_sigs: function_signatures)
@@ -246,7 +255,7 @@ fn occurs_check(left: Term, right: Term) -> Result(Nil, InferenceError) {
 }
 
 fn gen_var(ctx: Context) -> #(Term, Context) {
-  let assert yielder.Next(var, vars) = ctx.vars |> yielder.step
+  let #(var, vars) = ctx.vars |> next_id
   #(Var(var), Context(..ctx, vars:))
 }
 
@@ -284,8 +293,40 @@ fn generate_constraints(ctx: Context, expr: ExpressionData) -> #(Context, Term) 
       let con = Constraint(origin:, lhs: outer, rhs: Iter(inner))
       #(add(ctx, con), outer)
     }
-    parser.Map(_fields) -> todo
-    parser.Member(_, _) -> todo
+    parser.Map(fields) -> {
+      let #(outer, ctx) = gen_var(ctx)
+
+      let ctx =
+        list.fold(fields, ctx, fn(ctx, field) {
+          let #(key_expr, value_expr) = field
+          let #(ctx, _) = generate_constraints(ctx, key_expr)
+          let #(ctx, _) = generate_constraints(ctx, value_expr)
+          ctx
+        })
+
+      let con =
+        Constraint(
+          origin:,
+          lhs: outer,
+          rhs: Known(type_.MapT(type_.DynamicT, type_.DynamicT)),
+        )
+      #(add(ctx, con), outer)
+    }
+    parser.Member(parent, member) -> {
+      let #(outer, ctx) = gen_var(ctx)
+      let #(ctx, _) = generate_constraints(ctx, parent)
+
+      let ctx = case member {
+        parser.Index(idx_expr) -> {
+          let #(ctx, _) = generate_constraints(ctx, idx_expr)
+          ctx
+        }
+        parser.Attribute(_) -> ctx
+      }
+
+      let con = Constraint(origin:, lhs: outer, rhs: outer)
+      #(add(ctx, con), outer)
+    }
     parser.Ternary(cond, then, otherwise) -> {
       let #(outer, ctx) = gen_var(ctx)
       let #(cond_var, ctx) = gen_var(ctx)
@@ -461,20 +502,9 @@ fn ref_map_terms(ctx: Context, env: Dict(String, Term)) -> Dict(Int, Term) {
   |> unify_constraint_origin
   |> dict.to_list
   |> list.map(fn(con) {
-    let #(origin, #(name, term)) = con
-    case dict.get(env, name) {
-      Ok(found) -> #(origin, found)
-      Error(_) -> {
-        io.println(
-          "didn't find '"
-          <> name
-          <> "' in term refs, lost: "
-          <> string.inspect(term),
-        )
-
-        #(origin, term)
-      }
-    }
+    let #(origin, #(name, _term)) = con
+    let #(result, _) = substitute_term(env, Var(name))
+    #(origin, result)
   })
   |> dict.from_list
 }

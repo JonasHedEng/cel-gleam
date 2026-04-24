@@ -156,6 +156,102 @@ pub fn map_test() {
   )
 }
 
+pub fn filter_then_map_test() {
+  let source =
+    "rows.filter(r, r.price > 1).map(r, {'item': r.item, 'price': r.price})"
+
+  let assert Ok(program) = interpreter.new(source)
+
+  let rows =
+    value.List([
+      value.Map(
+        dict.new()
+        |> dict.insert(value.KeyString("item"), value.String("apple"))
+        |> dict.insert(value.KeyString("price"), value.Float(1.5)),
+      ),
+      value.Map(
+        dict.new()
+        |> dict.insert(value.KeyString("item"), value.String("banana"))
+        |> dict.insert(value.KeyString("price"), value.Float(0.5)),
+      ),
+      value.Map(
+        dict.new()
+        |> dict.insert(value.KeyString("item"), value.String("cherry"))
+        |> dict.insert(value.KeyString("price"), value.Float(2.0)),
+      ),
+    ])
+
+  let ctx =
+    interpreter.default_context()
+    |> context.insert_variable("rows", rows)
+
+  interpreter.execute(program, ctx)
+  |> should.equal(
+    Ok(
+      value.List([
+        value.Map(
+          dict.new()
+          |> dict.insert(value.KeyString("item"), value.String("apple"))
+          |> dict.insert(value.KeyString("price"), value.Float(1.5)),
+        ),
+        value.Map(
+          dict.new()
+          |> dict.insert(value.KeyString("item"), value.String("cherry"))
+          |> dict.insert(value.KeyString("price"), value.Float(2.0)),
+        ),
+      ]),
+    ),
+  )
+}
+
+pub fn filter_then_map_identity_with_column_vars_test() {
+  // Simulate the exact sheetflow context: rows + named column lists
+  let source = "rows.filter(r, r.Price > 1.0).map(r, r)"
+
+  let assert Ok(program) = interpreter.new(source)
+
+  let apple =
+    value.Map(
+      dict.new()
+      |> dict.insert(value.KeyString("Item"), value.String("Apple"))
+      |> dict.insert(value.KeyString("Price"), value.Float(1.5))
+      |> dict.insert(value.KeyString("Qty"), value.Int(10)),
+    )
+  let banana =
+    value.Map(
+      dict.new()
+      |> dict.insert(value.KeyString("Item"), value.String("Banana"))
+      |> dict.insert(value.KeyString("Price"), value.Float(0.75))
+      |> dict.insert(value.KeyString("Qty"), value.Int(20)),
+    )
+  let cherry =
+    value.Map(
+      dict.new()
+      |> dict.insert(value.KeyString("Item"), value.String("Cherry"))
+      |> dict.insert(value.KeyString("Price"), value.Float(2.0))
+      |> dict.insert(value.KeyString("Qty"), value.Int(5)),
+    )
+
+  let ctx =
+    interpreter.default_context()
+    |> context.insert_variable("rows", value.List([apple, banana, cherry]))
+    |> context.insert_variable(
+      "Item",
+      value.List([value.String("Apple"), value.String("Banana"), value.String("Cherry")]),
+    )
+    |> context.insert_variable(
+      "Price",
+      value.List([value.Float(1.5), value.Float(0.75), value.Float(2.0)]),
+    )
+    |> context.insert_variable(
+      "Qty",
+      value.List([value.Int(10), value.Int(20), value.Int(5)]),
+    )
+
+  interpreter.execute(program, ctx)
+  |> should.equal(Ok(value.List([apple, cherry])))
+}
+
 pub fn all_test() {
   let source = "[1, 2, 3, 4].all(x, x < 5)"
 

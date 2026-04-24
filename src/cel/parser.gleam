@@ -300,7 +300,7 @@ fn expression_unit(
 
     [#(t.LeftSquare, _), ..tokens] -> {
       use #(elements, ctx) <- result.map(
-        list(advance(ctx, tokens), expression, None, []),
+        list(advance(ctx, tokens), expression, []),
       )
 
       let #(expr, ctx) = List(elements) |> make(ctx, ctx.tokens)
@@ -398,7 +398,6 @@ fn map_field(
 fn list(
   ctx: Context,
   parser: fn(Context) -> Result(#(t, Context), Error),
-  discard: Option(t),
   acc: List(t),
 ) -> Result(#(List(t), Context), Error) {
   case ctx.tokens {
@@ -417,8 +416,7 @@ fn list(
         | [#(t.Comma, _), #(t.RightSquare, _), ..tokens] ->
           Ok(#(list.reverse(acc), advance(ctx, tokens)))
 
-        [#(t.Comma, _), ..tokens] ->
-          list(advance(ctx, tokens), parser, discard, acc)
+        [#(t.Comma, _), ..tokens] -> list(advance(ctx, tokens), parser, acc)
 
         [#(other, position), ..] ->
           Error(UnexpectedToken(other, position.byte_offset))

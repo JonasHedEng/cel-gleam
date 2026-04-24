@@ -119,40 +119,12 @@ fn evaluate_arithmetic(
     v.Float(l), p.Add, v.Float(r) -> v.Float(l +. r) |> Ok
     v.Float(l), p.Div, v.Float(r) -> v.Float(l /. r) |> Ok
     v.Float(l), p.Mod, v.Float(r) ->
-      float.modulo(l, r)
-      |> result.map(v.Float)
-      |> result.map_error(fn(_) { error.ArithmeticError })
+      case float.modulo(l, r) {
+        Ok(m) -> Ok(v.Float(m))
+        Error(_) -> Error(error.ArithmeticError)
+      }
     v.Float(l), p.Mul, v.Float(r) -> v.Float(l *. r) |> Ok
     v.Float(l), p.Sub, v.Float(r) -> v.Float(l -. r) |> Ok
-
-    v.Int(l), p.Add, v.Float(r) | v.UInt(l), p.Add, v.Float(r) ->
-      v.Float(int.to_float(l) +. r) |> Ok
-    v.Float(l), p.Add, v.Int(r) | v.Float(l), p.Add, v.UInt(r) ->
-      v.Float(l +. int.to_float(r)) |> Ok
-
-    v.Int(l), p.Sub, v.Float(r) | v.UInt(l), p.Sub, v.Float(r) ->
-      v.Float(int.to_float(l) -. r) |> Ok
-    v.Float(l), p.Sub, v.Int(r) | v.Float(l), p.Sub, v.UInt(r) ->
-      v.Float(l -. int.to_float(r)) |> Ok
-
-    v.Int(l), p.Mul, v.Float(r) | v.UInt(l), p.Mul, v.Float(r) ->
-      v.Float(int.to_float(l) *. r) |> Ok
-    v.Float(l), p.Mul, v.Int(r) | v.Float(l), p.Mul, v.UInt(r) ->
-      v.Float(l *. int.to_float(r)) |> Ok
-
-    v.Int(l), p.Div, v.Float(r) | v.UInt(l), p.Div, v.Float(r) ->
-      v.Float(int.to_float(l) /. r) |> Ok
-    v.Float(l), p.Div, v.Int(r) | v.Float(l), p.Div, v.UInt(r) ->
-      v.Float(l /. int.to_float(r)) |> Ok
-
-    v.Int(l), p.Mod, v.Float(r) | v.UInt(l), p.Mod, v.Float(r) ->
-      float.modulo(int.to_float(l), r)
-      |> result.map(v.Float)
-      |> result.map_error(fn(_) { error.ArithmeticError })
-    v.Float(l), p.Mod, v.Int(r) | v.Float(l), p.Mod, v.UInt(r) ->
-      float.modulo(l, int.to_float(r))
-      |> result.map(v.Float)
-      |> result.map_error(fn(_) { error.ArithmeticError })
 
     v.String(l), p.Add, v.String(r) -> v.String(l <> r) |> Ok
     v.List(l), p.Add, v.List(r) -> v.List(list.flatten([l, r])) |> Ok
@@ -177,16 +149,43 @@ fn evaluate_logical(
   ctx: context.Context,
 ) -> Result(v.Value, ExecutionError) {
   use lhs_value <- result.try(evaluate_expr(lhs, ctx))
-  use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+  case lhs_value, op {
+    v.Bool(False), p.And -> Ok(v.Bool(False))
+    v.Bool(True), p.Or -> Ok(v.Bool(True))
+    v.Bool(l), p.And -> {
+      use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+      case rhs_value {
+        v.Bool(r) -> Ok(v.Bool(l && r))
+        r ->
+          error.UnsupportedBinop(type_.kind(lhs_value), "&&", type_.kind(r))
+          |> Error
+      }
+    }
+    v.Bool(l), p.Or -> {
+      use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+      case rhs_value {
+        v.Bool(r) -> Ok(v.Bool(l || r))
+        r ->
+          error.UnsupportedBinop(type_.kind(lhs_value), "||", type_.kind(r))
+          |> Error
+      }
+    }
+    l, p.And ->
+      error.UnsupportedBinop(type_.kind(l), "&&", type_.kind(l)) |> Error
+    l, p.Or ->
+      error.UnsupportedBinop(type_.kind(l), "||", type_.kind(l)) |> Error
+  }
+}
 
-  case lhs_value, op, rhs_value {
-    v.Bool(l), p.And, v.Bool(r) -> v.Bool(l && r) |> Ok
-    v.Bool(l), p.Or, v.Bool(r) -> v.Bool(l || r) |> Ok
-
-    l, p.And, r ->
-      error.UnsupportedBinop(type_.kind(l), "&&", type_.kind(r)) |> Error
-    l, p.Or, r ->
-      error.UnsupportedBinop(type_.kind(l), "||", type_.kind(r)) |> Error
+fn values_equal(l: v.Value, r: v.Value) -> Bool {
+  case l, r {
+    v.Int(a), v.Float(b) -> int.to_float(a) == b
+    v.UInt(a), v.Float(b) -> int.to_float(a) == b
+    v.Float(a), v.Int(b) -> a == int.to_float(b)
+    v.Float(a), v.UInt(b) -> a == int.to_float(b)
+    v.UInt(a), v.Int(b) -> a == b
+    v.Int(a), v.UInt(b) -> a == b
+    a, b -> a == b
   }
 }
 
@@ -200,16 +199,8 @@ fn evaluate_relation(
   use rhs_value <- result.try(evaluate_expr(rhs, ctx))
 
   case lhs_value, op, rhs_value {
-    v.Int(l), p.Equals, v.Float(r) -> v.Bool(int.to_float(l) == r) |> Ok
-    v.UInt(l), p.Equals, v.Float(r) -> v.Bool(int.to_float(l) == r) |> Ok
-    v.Float(l), p.Equals, v.Int(r) -> v.Bool(l == int.to_float(r)) |> Ok
-    v.Float(l), p.Equals, v.UInt(r) -> v.Bool(l == int.to_float(r)) |> Ok
-
-    v.UInt(l), p.Equals, v.Int(r) -> v.Bool(l == r) |> Ok
-    v.Int(l), p.Equals, v.UInt(r) -> v.Bool(l == r) |> Ok
-
-    l, p.Equals, r -> v.Bool(l == r) |> Ok
-    l, p.NotEquals, r -> v.Bool(l != r) |> Ok
+    l, p.Equals, r -> v.Bool(values_equal(l, r)) |> Ok
+    l, p.NotEquals, r -> v.Bool(!values_equal(l, r)) |> Ok
 
     v.Int(l), p.LessThanEq, v.Int(r) -> v.Bool(l <= r) |> Ok
     v.Int(l), p.LessThan, v.Int(r) -> v.Bool(l < r) |> Ok
@@ -220,6 +211,11 @@ fn evaluate_relation(
     v.UInt(l), p.LessThan, v.UInt(r) -> v.Bool(l < r) |> Ok
     v.UInt(l), p.GreaterThanEq, v.UInt(r) -> v.Bool(l >= r) |> Ok
     v.UInt(l), p.GreaterThan, v.UInt(r) -> v.Bool(l > r) |> Ok
+
+    v.Float(l), p.LessThanEq, v.Float(r) -> v.Bool(l <=. r) |> Ok
+    v.Float(l), p.LessThan, v.Float(r) -> v.Bool(l <. r) |> Ok
+    v.Float(l), p.GreaterThanEq, v.Float(r) -> v.Bool(l >=. r) |> Ok
+    v.Float(l), p.GreaterThan, v.Float(r) -> v.Bool(l >. r) |> Ok
 
     v.Int(l), p.LessThanEq, v.UInt(r) -> v.Bool(l <= r) |> Ok
     v.Int(l), p.LessThan, v.UInt(r) -> v.Bool(l < r) |> Ok
