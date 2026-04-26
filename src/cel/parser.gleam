@@ -1,6 +1,3 @@
-// Heavily inspired by
-// https://github.com/lpil/glance/blob/main/src/glance.gleam
-
 import gleam/float
 import gleam/int
 import gleam/list
@@ -9,7 +6,10 @@ import gleam/pair
 import gleam/result
 import gleam/string
 
-import cel/parser/lexer as t
+import cel/internal/lexer as t
+
+// Heavily inspired by
+// https://github.com/lpil/glance/blob/main/src/glance.gleam
 
 pub type BinaryOp {
   Arithmetic(Arithmetic)
@@ -58,7 +58,7 @@ pub type Atom {
 pub type Member {
   Attribute(String)
   Index(ExpressionData)
-  // Fields(List(#(String, ExpressionData)))
+  Fields(List(#(String, ExpressionData)))
 }
 
 pub type Expression {
@@ -124,7 +124,7 @@ fn binary_operator(token: t.Token) -> Result(BinaryOp, Nil) {
 type Tokens =
   List(#(t.Token, t.Position))
 
-fn expression(ctx: Context) -> Result(#(ExpressionData, Context), Error) {
+fn expression(ctx: Context) -> Result(#(ExpressionData, Context), ParseError) {
   expression_loop(ctx, [], [])
 }
 
@@ -136,7 +136,7 @@ fn expression_loop(
   ctx: Context,
   operators: List(BinaryOp),
   values: List(ExpressionData),
-) -> Result(#(ExpressionData, Context), Error) {
+) -> Result(#(ExpressionData, Context), ParseError) {
   use #(expr, ctx) <- result.try(expression_unit(ctx))
 
   let expr = case expr {
@@ -260,7 +260,7 @@ fn make(
 
 fn expression_unit(
   ctx: Context,
-) -> Result(#(Option(ExpressionData), Context), Error) {
+) -> Result(#(Option(ExpressionData), Context), ParseError) {
   use #(parsed, ctx) <- result.try(case ctx.tokens {
     [#(t.Dot, _), #(t.Ident(name), _), ..tokens]
     | [#(t.Ident(name), _), ..tokens] -> {
@@ -353,9 +353,9 @@ fn expression_unit(
 fn comma_delimited(
   ctx: Context,
   items: List(t),
-  parse parser: fn(Context) -> Result(#(t, Context), Error),
+  parse parser: fn(Context) -> Result(#(t, Context), ParseError),
   until final: t.Token,
-) -> Result(#(List(t), Context), Error) {
+) -> Result(#(List(t), Context), ParseError) {
   case ctx.tokens {
     [] -> Error(UnexpectedEndOfFile)
     [#(token, _), ..tokens] if token == final ->
@@ -379,9 +379,27 @@ fn comma_delimited(
   }
 }
 
+fn field_init(
+  ctx: Context,
+) -> Result(#(#(String, ExpressionData), Context), ParseError) {
+  case ctx.tokens {
+    [#(t.Ident(name), _), ..tokens] -> {
+      let ctx = advance(ctx, tokens)
+      case ctx.tokens {
+        [#(t.Colon, _), ..tokens] -> {
+          use #(value_expr, ctx) <- result.map(expression(advance(ctx, tokens)))
+          #(#(name, value_expr), ctx)
+        }
+        _ -> unexpected(ctx.tokens)
+      }
+    }
+    _ -> unexpected(ctx.tokens)
+  }
+}
+
 fn map_field(
   ctx: Context,
-) -> Result(#(#(ExpressionData, ExpressionData), Context), Error) {
+) -> Result(#(#(ExpressionData, ExpressionData), Context), ParseError) {
   use #(key_expression, ctx) <- result.try(expression(ctx))
 
   case ctx.tokens {
@@ -397,9 +415,9 @@ fn map_field(
 
 fn list(
   ctx: Context,
-  parser: fn(Context) -> Result(#(t, Context), Error),
+  parser: fn(Context) -> Result(#(t, Context), ParseError),
   acc: List(t),
-) -> Result(#(List(t), Context), Error) {
+) -> Result(#(List(t), Context), ParseError) {
   case ctx.tokens {
     [#(t.RightSquare, _), ..tokens] ->
       Ok(#(list.reverse(acc), advance(ctx, tokens)))
@@ -429,7 +447,7 @@ fn list(
 fn after_expression(
   ctx: Context,
   parsed: ExpressionData,
-) -> Result(#(ExpressionData, Context), Error) {
+) -> Result(#(ExpressionData, Context), ParseError) {
   case ctx.tokens {
     // Member attribute
     [#(t.Dot, _), #(t.Ident(label), _), ..tokens] -> {
@@ -466,6 +484,15 @@ fn after_expression(
       }
     }
 
+    // Field init (TypeName{field: expr, ...})
+    [#(t.LeftCurly, _), ..tokens] -> {
+      let result =
+        comma_delimited(advance(ctx, tokens), [], field_init, t.RightCurly)
+      use #(fields, ctx) <- result.try(result)
+      let #(expr, ctx) = Member(parsed, Fields(fields)) |> make(ctx, ctx.tokens)
+      after_expression(ctx, expr)
+    }
+
     _ -> Ok(#(parsed, ctx))
   }
 }
@@ -475,7 +502,7 @@ fn call(
   arguments: List(ExpressionData),
   ident: String,
   this: Option(ExpressionData),
-) -> Result(#(ExpressionData, Context), Error) {
+) -> Result(#(ExpressionData, Context), ParseError) {
   case ctx.tokens {
     [] -> Error(UnexpectedEndOfFile)
 
@@ -506,21 +533,21 @@ fn call(
   }
 }
 
-pub type Error {
+pub type ParseError {
   UnexpectedEndOfFile
   UnexpectedSourceStr(String, Int)
   UnexpectedToken(t.Token, Int)
   DeadEnd(Tokens)
 }
 
-fn unexpected(tokens: Tokens) -> Result(a, Error) {
+fn unexpected(tokens: Tokens) -> Result(a, ParseError) {
   case tokens {
     [#(token, pos), ..] -> Error(UnexpectedToken(token, pos.byte_offset))
     [] -> Error(UnexpectedEndOfFile)
   }
 }
 
-fn tokenize(source: String) -> Result(Tokens, Error) {
+fn tokenize(source: String) -> Result(Tokens, ParseError) {
   let lexed =
     t.new(source)
     |> t.discard_comments
@@ -541,7 +568,7 @@ fn tokenize(source: String) -> Result(Tokens, Error) {
   lexed
 }
 
-fn parse_(tokens: Tokens) -> Result(ExpressionData, Error) {
+fn parse_(tokens: Tokens) -> Result(ExpressionData, ParseError) {
   use #(expr, rest) <- result.try(expression(Ctx(tokens:, id: 0)))
 
   case rest.tokens {
@@ -550,7 +577,7 @@ fn parse_(tokens: Tokens) -> Result(ExpressionData, Error) {
   }
 }
 
-pub fn parse(source: String) -> Result(ExpressionData, Error) {
+pub fn parse(source: String) -> Result(ExpressionData, ParseError) {
   tokenize(source)
   |> result.try(parse_)
 }

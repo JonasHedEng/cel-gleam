@@ -3,28 +3,26 @@ import gleam/dict
 import gleeunit/should
 
 import cel/interpreter
-import cel/interpreter/context
-import cel/interpreter/value
 
 pub fn resolve_and_compute_test() {
   let source = "a + 5u"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx = context.empty() |> context.insert_variable("a", value.UInt(2))
+  let ctx = interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.UInt(7)))
+  |> should.equal(Ok(interpreter.UInt(7)))
 }
 
 pub fn list_test() {
   let source = "[a + 5u, a - 1u]"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx = context.empty() |> context.insert_variable("a", value.UInt(2))
+  let ctx = interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
 
   let expected =
-    [value.UInt(7), value.UInt(1)]
-    |> value.List
+    [interpreter.UInt(7), interpreter.UInt(1)]
+    |> interpreter.List
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(expected))
@@ -34,10 +32,10 @@ pub fn ternary_test() {
   let source = "a == 2 ? 3 : 5"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx = context.empty() |> context.insert_variable("a", value.UInt(2))
+  let ctx = interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Int(3)))
+  |> should.equal(Ok(interpreter.Int(3)))
 }
 
 pub fn nested_ternary_test() {
@@ -45,12 +43,12 @@ pub fn nested_ternary_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let ctx =
-    context.empty()
-    |> context.insert_variable("a", value.UInt(1))
-    |> context.insert_variable("b", value.UInt(3))
+    interpreter.empty()
+    |> interpreter.insert_variable("a", interpreter.UInt(1))
+    |> interpreter.insert_variable("b", interpreter.UInt(3))
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Int(4)))
+  |> should.equal(Ok(interpreter.Int(4)))
 }
 
 pub fn in_map_test() {
@@ -58,21 +56,21 @@ pub fn in_map_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let map =
-    value.Map(
+    interpreter.Map(
       [
-        #(value.KeyString("a"), value.Int(1)),
-        #(value.KeyString("b"), value.Int(2)),
-        #(value.KeyString("c"), value.Int(3)),
+        #(interpreter.KeyString("a"), interpreter.Int(1)),
+        #(interpreter.KeyString("b"), interpreter.Int(2)),
+        #(interpreter.KeyString("c"), interpreter.Int(3)),
       ]
       |> dict.from_list,
     )
 
   let ctx =
-    context.empty()
-    |> context.insert_variable("dict", map)
+    interpreter.empty()
+    |> interpreter.insert_variable("dict", map)
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Bool(True)))
+  |> should.equal(Ok(interpreter.Bool(True)))
 }
 
 pub fn member_field_test() {
@@ -80,12 +78,12 @@ pub fn member_field_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let obj =
-    value.Map(
+    interpreter.Map(
       [
         #(
-          value.KeyString("field"),
-          value.Map(
-            [#(value.KeyString("inner"), value.Int(1))]
+          interpreter.KeyString("field"),
+          interpreter.Map(
+            [#(interpreter.KeyString("inner"), interpreter.Int(1))]
             |> dict.from_list,
           ),
         ),
@@ -94,16 +92,16 @@ pub fn member_field_test() {
     )
 
   let arr =
-    [value.String("a"), value.String("b"), value.String("c")]
-    |> value.List
+    [interpreter.String("a"), interpreter.String("b"), interpreter.String("c")]
+    |> interpreter.List
 
   let ctx =
-    context.empty()
-    |> context.insert_variable("obj", obj)
-    |> context.insert_variable("arr", arr)
+    interpreter.empty()
+    |> interpreter.insert_variable("obj", obj)
+    |> interpreter.insert_variable("arr", arr)
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.String("b")))
+  |> should.equal(Ok(interpreter.String("b")))
 }
 
 pub fn function_call_ternary_test() {
@@ -114,7 +112,7 @@ pub fn function_call_ternary_test() {
   let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.List([value.Int(2), value.Int(4)])))
+  |> should.equal(Ok(interpreter.List([interpreter.Int(2), interpreter.Int(4)])))
 }
 
 pub fn expr_key_map_test() {
@@ -123,16 +121,16 @@ pub fn expr_key_map_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let ctx =
-    context.empty()
-    |> context.insert_variable("a", value.Int(3))
+    interpreter.empty()
+    |> interpreter.insert_variable("a", interpreter.Int(3))
 
   interpreter.execute(program, ctx)
   |> should.equal(
-    Ok(value.Map(
+    Ok(interpreter.Map(
       dict.new()
-      |> dict.insert(value.KeyString("ab"), value.Int(1))
-      |> dict.insert(value.KeyString("c"), value.Int(3))
-      |> dict.insert(value.KeyString("cd"), value.Int(19)),
+      |> dict.insert(interpreter.KeyString("ab"), interpreter.Int(1))
+      |> dict.insert(interpreter.KeyString("c"), interpreter.Int(3))
+      |> dict.insert(interpreter.KeyString("cd"), interpreter.Int(19)),
     )),
   )
 }
@@ -146,11 +144,11 @@ pub fn map_test() {
   interpreter.execute(program, ctx)
   |> should.equal(
     Ok(
-      value.List([
-        value.List([value.Int(1), value.Int(1)]),
-        value.List([value.Int(2), value.Int(2)]),
-        value.List([value.Int(3), value.Int(3)]),
-        value.List([value.Int(4), value.Int(4)]),
+      interpreter.List([
+        interpreter.List([interpreter.Int(1), interpreter.Int(1)]),
+        interpreter.List([interpreter.Int(2), interpreter.Int(2)]),
+        interpreter.List([interpreter.Int(3), interpreter.Int(3)]),
+        interpreter.List([interpreter.Int(4), interpreter.Int(4)]),
       ]),
     ),
   )
@@ -163,41 +161,41 @@ pub fn filter_then_map_test() {
   let assert Ok(program) = interpreter.new(source)
 
   let rows =
-    value.List([
-      value.Map(
+    interpreter.List([
+      interpreter.Map(
         dict.new()
-        |> dict.insert(value.KeyString("item"), value.String("apple"))
-        |> dict.insert(value.KeyString("price"), value.Float(1.5)),
+        |> dict.insert(interpreter.KeyString("item"), interpreter.String("apple"))
+        |> dict.insert(interpreter.KeyString("price"), interpreter.Float(1.5)),
       ),
-      value.Map(
+      interpreter.Map(
         dict.new()
-        |> dict.insert(value.KeyString("item"), value.String("banana"))
-        |> dict.insert(value.KeyString("price"), value.Float(0.5)),
+        |> dict.insert(interpreter.KeyString("item"), interpreter.String("banana"))
+        |> dict.insert(interpreter.KeyString("price"), interpreter.Float(0.5)),
       ),
-      value.Map(
+      interpreter.Map(
         dict.new()
-        |> dict.insert(value.KeyString("item"), value.String("cherry"))
-        |> dict.insert(value.KeyString("price"), value.Float(2.0)),
+        |> dict.insert(interpreter.KeyString("item"), interpreter.String("cherry"))
+        |> dict.insert(interpreter.KeyString("price"), interpreter.Float(2.0)),
       ),
     ])
 
   let ctx =
     interpreter.default_context()
-    |> context.insert_variable("rows", rows)
+    |> interpreter.insert_variable("rows", rows)
 
   interpreter.execute(program, ctx)
   |> should.equal(
     Ok(
-      value.List([
-        value.Map(
+      interpreter.List([
+        interpreter.Map(
           dict.new()
-          |> dict.insert(value.KeyString("item"), value.String("apple"))
-          |> dict.insert(value.KeyString("price"), value.Float(1.5)),
+          |> dict.insert(interpreter.KeyString("item"), interpreter.String("apple"))
+          |> dict.insert(interpreter.KeyString("price"), interpreter.Float(1.5)),
         ),
-        value.Map(
+        interpreter.Map(
           dict.new()
-          |> dict.insert(value.KeyString("item"), value.String("cherry"))
-          |> dict.insert(value.KeyString("price"), value.Float(2.0)),
+          |> dict.insert(interpreter.KeyString("item"), interpreter.String("cherry"))
+          |> dict.insert(interpreter.KeyString("price"), interpreter.Float(2.0)),
         ),
       ]),
     ),
@@ -205,51 +203,61 @@ pub fn filter_then_map_test() {
 }
 
 pub fn filter_then_map_identity_with_column_vars_test() {
-  // Simulate the exact sheetflow context: rows + named column lists
   let source = "rows.filter(r, r.Price > 1.0).map(r, r)"
 
   let assert Ok(program) = interpreter.new(source)
 
   let apple =
-    value.Map(
+    interpreter.Map(
       dict.new()
-      |> dict.insert(value.KeyString("Item"), value.String("Apple"))
-      |> dict.insert(value.KeyString("Price"), value.Float(1.5))
-      |> dict.insert(value.KeyString("Qty"), value.Int(10)),
+      |> dict.insert(interpreter.KeyString("Item"), interpreter.String("Apple"))
+      |> dict.insert(interpreter.KeyString("Price"), interpreter.Float(1.5))
+      |> dict.insert(interpreter.KeyString("Qty"), interpreter.Int(10)),
     )
   let banana =
-    value.Map(
+    interpreter.Map(
       dict.new()
-      |> dict.insert(value.KeyString("Item"), value.String("Banana"))
-      |> dict.insert(value.KeyString("Price"), value.Float(0.75))
-      |> dict.insert(value.KeyString("Qty"), value.Int(20)),
+      |> dict.insert(interpreter.KeyString("Item"), interpreter.String("Banana"))
+      |> dict.insert(interpreter.KeyString("Price"), interpreter.Float(0.75))
+      |> dict.insert(interpreter.KeyString("Qty"), interpreter.Int(20)),
     )
   let cherry =
-    value.Map(
+    interpreter.Map(
       dict.new()
-      |> dict.insert(value.KeyString("Item"), value.String("Cherry"))
-      |> dict.insert(value.KeyString("Price"), value.Float(2.0))
-      |> dict.insert(value.KeyString("Qty"), value.Int(5)),
+      |> dict.insert(interpreter.KeyString("Item"), interpreter.String("Cherry"))
+      |> dict.insert(interpreter.KeyString("Price"), interpreter.Float(2.0))
+      |> dict.insert(interpreter.KeyString("Qty"), interpreter.Int(5)),
     )
 
   let ctx =
     interpreter.default_context()
-    |> context.insert_variable("rows", value.List([apple, banana, cherry]))
-    |> context.insert_variable(
+    |> interpreter.insert_variable(
+      "rows",
+      interpreter.List([apple, banana, cherry]),
+    )
+    |> interpreter.insert_variable(
       "Item",
-      value.List([value.String("Apple"), value.String("Banana"), value.String("Cherry")]),
+      interpreter.List([
+        interpreter.String("Apple"),
+        interpreter.String("Banana"),
+        interpreter.String("Cherry"),
+      ]),
     )
-    |> context.insert_variable(
+    |> interpreter.insert_variable(
       "Price",
-      value.List([value.Float(1.5), value.Float(0.75), value.Float(2.0)]),
+      interpreter.List([
+        interpreter.Float(1.5),
+        interpreter.Float(0.75),
+        interpreter.Float(2.0),
+      ]),
     )
-    |> context.insert_variable(
+    |> interpreter.insert_variable(
       "Qty",
-      value.List([value.Int(10), value.Int(20), value.Int(5)]),
+      interpreter.List([interpreter.Int(10), interpreter.Int(20), interpreter.Int(5)]),
     )
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.List([apple, cherry])))
+  |> should.equal(Ok(interpreter.List([apple, cherry])))
 }
 
 pub fn all_test() {
@@ -259,7 +267,7 @@ pub fn all_test() {
   let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Bool(True)))
+  |> should.equal(Ok(interpreter.Bool(True)))
 }
 
 pub fn size_test() {
@@ -268,13 +276,18 @@ pub fn size_test() {
   let assert Ok(program) = interpreter.new(source)
   let ctx =
     interpreter.default_context()
-    |> context.insert_variable(
+    |> interpreter.insert_variable(
       "list",
-      value.List([value.Int(1), value.Int(2), value.Int(3), value.Int(4)]),
+      interpreter.List([
+        interpreter.Int(1),
+        interpreter.Int(2),
+        interpreter.Int(3),
+        interpreter.Int(4),
+      ]),
     )
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Int(6)))
+  |> should.equal(Ok(interpreter.Int(6)))
 }
 
 pub fn parse_string_test() {
@@ -285,7 +298,7 @@ pub fn parse_string_test() {
     interpreter.execute(program, interpreter.default_context())
 
   result
-  |> should.equal(value.String("hello\""))
+  |> should.equal(interpreter.String("hello\""))
 }
 
 pub fn parse_raw_string_test() {
@@ -296,7 +309,7 @@ pub fn parse_raw_string_test() {
     interpreter.execute(program, interpreter.default_context())
 
   result
-  |> should.equal(value.String("hello\\"))
+  |> should.equal(interpreter.String("hello\\"))
 }
 
 pub fn parse_triple_quoted_string_test() {
@@ -307,14 +320,14 @@ pub fn parse_triple_quoted_string_test() {
     interpreter.execute(program, interpreter.default_context())
 
   result
-  |> should.equal(value.String("x''x"))
+  |> should.equal(interpreter.String("x''x"))
 }
 
 pub fn parse_bytes_test() {
   let source = "b\"\\xFFab\\177c\\x00\""
 
   let assert Ok(program) = interpreter.new(source)
-  let assert Ok(value.Bytes(result)) =
+  let assert Ok(interpreter.Bytes(result)) =
     interpreter.execute(program, interpreter.default_context())
 
   bit_array.inspect(result)
@@ -323,16 +336,16 @@ pub fn parse_bytes_test() {
 
 pub fn has_test() {
   let obj =
-    value.Map(
+    interpreter.Map(
       [
         #(
-          value.KeyString("b"),
-          value.Map(
+          interpreter.KeyString("b"),
+          interpreter.Map(
             [
               #(
-                value.KeyString("c"),
-                value.Map(
-                  [#(value.KeyString("d"), value.Int(1))]
+                interpreter.KeyString("c"),
+                interpreter.Map(
+                  [#(interpreter.KeyString("d"), interpreter.Int(1))]
                   |> dict.from_list,
                 ),
               ),
@@ -344,11 +357,13 @@ pub fn has_test() {
       |> dict.from_list,
     )
 
-  let ctx = interpreter.default_context() |> context.insert_variable("a", obj)
+  let ctx =
+    interpreter.default_context()
+    |> interpreter.insert_variable("a", obj)
 
   let eval = fn(source, expected) {
     let assert Ok(program) = interpreter.new(source)
-    let assert Ok(value.Bool(value)) = interpreter.execute(program, ctx)
+    let assert Ok(interpreter.Bool(value)) = interpreter.execute(program, ctx)
     value |> should.equal(expected)
   }
 
@@ -368,7 +383,7 @@ pub fn exists_test() {
   let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Bool(False)))
+  |> should.equal(Ok(interpreter.Bool(False)))
 
   let source = "[1, 2, -3, 4].exists(x, x < 0)"
 
@@ -376,7 +391,7 @@ pub fn exists_test() {
   let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(value.Bool(True)))
+  |> should.equal(Ok(interpreter.Bool(True)))
 }
 
 pub fn exists_one_test() {
@@ -384,7 +399,7 @@ pub fn exists_one_test() {
 
   let eval = fn(source, expected) {
     let assert Ok(program) = interpreter.new(source)
-    let assert Ok(value.Bool(value)) = interpreter.execute(program, ctx)
+    let assert Ok(interpreter.Bool(value)) = interpreter.execute(program, ctx)
     value |> should.equal(expected)
   }
 
@@ -393,4 +408,85 @@ pub fn exists_one_test() {
   eval("[5].exists_one(x, x > 3)", True)
   eval("[5, 3, 1].exists_one(x, x > 3)", True)
   eval("[5, 3, 7].exists_one(x, x > 3)", False)
+}
+
+pub fn field_init_test() {
+  let source = "MyType{name: \"alice\", age: 30}"
+  let assert Ok(program) = interpreter.new(source)
+
+  let result = interpreter.execute(program, interpreter.default_context())
+
+  result
+  |> should.equal(
+    Ok(
+      interpreter.Map(
+        dict.from_list([
+          #(interpreter.KeyString("name"), interpreter.String("alice")),
+          #(interpreter.KeyString("age"), interpreter.Int(30)),
+        ]),
+      ),
+    ),
+  )
+}
+
+pub fn field_init_with_variables_test() {
+  let source = "Point{x: px, y: py}"
+  let assert Ok(program) = interpreter.new(source)
+
+  let ctx =
+    interpreter.default_context()
+    |> interpreter.insert_variable("px", interpreter.Int(3))
+    |> interpreter.insert_variable("py", interpreter.Int(4))
+
+  let result = interpreter.execute(program, ctx)
+
+  result
+  |> should.equal(
+    Ok(
+      interpreter.Map(
+        dict.from_list([
+          #(interpreter.KeyString("x"), interpreter.Int(3)),
+          #(interpreter.KeyString("y"), interpreter.Int(4)),
+        ]),
+      ),
+    ),
+  )
+}
+
+pub fn field_init_type_name_not_resolved_test() {
+  // Type name is not looked up as a variable — unknown idents as type names are fine
+  let source = "UnknownType{val: 1}"
+  let assert Ok(program) = interpreter.new(source)
+
+  interpreter.execute(program, interpreter.default_context())
+  |> should.equal(
+    Ok(
+      interpreter.Map(
+        dict.from_list([#(interpreter.KeyString("val"), interpreter.Int(1))]),
+      ),
+    ),
+  )
+}
+
+pub fn field_init_nested_test() {
+  let source = "Outer{inner: Inner{v: 42}}"
+  let assert Ok(program) = interpreter.new(source)
+
+  let result = interpreter.execute(program, interpreter.default_context())
+
+  result
+  |> should.equal(
+    Ok(
+      interpreter.Map(
+        dict.from_list([
+          #(
+            interpreter.KeyString("inner"),
+            interpreter.Map(
+              dict.from_list([#(interpreter.KeyString("v"), interpreter.Int(42))]),
+            ),
+          ),
+        ]),
+      ),
+    ),
+  )
 }

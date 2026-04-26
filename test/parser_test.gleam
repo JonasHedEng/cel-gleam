@@ -278,3 +278,69 @@ pub fn parse_list_with_negative_int_test() {
   parsed
   |> should.equal(expected)
 }
+
+pub fn parse_field_init_test() {
+  let source = "MyType{x: 1, y: 2}"
+  let assert Ok(parsed) = p.parse(source)
+
+  parsed
+  |> should.equal(
+    p.Member(
+      p.Ident("MyType") |> p.with_id(0),
+      p.Fields([
+        #("x", p.Atom(p.Int(1)) |> p.with_id(1)),
+        #("y", p.Atom(p.Int(2)) |> p.with_id(2)),
+      ]),
+    )
+    |> p.with_id(3),
+  )
+}
+
+pub fn parse_field_init_empty_test() {
+  let source = "MyType{}"
+  let assert Ok(parsed) = p.parse(source)
+
+  parsed
+  |> should.equal(
+    p.Member(p.Ident("MyType") |> p.with_id(0), p.Fields([]))
+    |> p.with_id(1),
+  )
+}
+
+pub fn parse_field_init_qualified_test() {
+  let source = "pkg.Type{a: true}"
+  let assert Ok(parsed) = p.parse(source)
+
+  parsed
+  |> should.equal(
+    p.Member(
+      p.Member(p.Ident("pkg") |> p.with_id(0), p.Attribute("Type"))
+        |> p.with_id(1),
+      p.Fields([#("a", p.Atom(p.Bool(True)) |> p.with_id(2))]),
+    )
+    |> p.with_id(3),
+  )
+}
+
+pub fn parse_field_init_nested_test() {
+  let source = "Outer{inner: Inner{v: 1}}"
+  let assert Ok(parsed) = p.parse(source)
+
+  parsed
+  |> should.equal(
+    p.Member(
+      p.Ident("Outer") |> p.with_id(0),
+      p.Fields([
+        #(
+          "inner",
+          p.Member(
+            p.Ident("Inner") |> p.with_id(1),
+            p.Fields([#("v", p.Atom(p.Int(1)) |> p.with_id(2))]),
+          )
+            |> p.with_id(3),
+        ),
+      ]),
+    )
+    |> p.with_id(4),
+  )
+}

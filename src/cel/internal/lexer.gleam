@@ -8,6 +8,7 @@ import gleam/list
 import gleam/result
 import gleam/string
 
+@internal
 pub type Token {
   // Literals
   Ident(String)
@@ -70,10 +71,12 @@ pub type Token {
   InvalidByteLiteral(String)
 }
 
+@internal
 pub type Position {
   Position(byte_offset: Int, byte_size: Int)
 }
 
+@internal
 pub opaque type Lexer {
   Lexer(
     source: String,
@@ -83,6 +86,7 @@ pub opaque type Lexer {
   )
 }
 
+@internal
 pub fn new(source: String) -> Lexer {
   Lexer(
     source: source,
@@ -92,14 +96,17 @@ pub fn new(source: String) -> Lexer {
   )
 }
 
+@internal
 pub fn discard_whitespace(lexer: Lexer) -> Lexer {
   Lexer(..lexer, preserve_whitespace: False)
 }
 
+@internal
 pub fn discard_comments(lexer: Lexer) -> Lexer {
   Lexer(..lexer, preserve_comments: False)
 }
 
+@internal
 pub fn lex(lexer: Lexer) -> List(#(Token, Position)) {
   do_lex(lexer, [])
   |> list.reverse

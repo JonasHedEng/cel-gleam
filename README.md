@@ -33,8 +33,6 @@ gleam add cel@0.3
 import gleam/io
 
 import cel/interpreter
-import cel/interpreter/context
-import cel/interpreter/value
 
 pub fn main() {
   let source =
@@ -42,12 +40,12 @@ pub fn main() {
 
   let ctx =
     interpreter.default_context()
-    |> context.insert_variable("a", value.Int(1))
-    |> context.insert_variable("b", value.Int(3))
-    |> context.insert_variable("c", value.Int(5))
+    |> interpreter.insert_variable("a", interpreter.Int(1))
+    |> interpreter.insert_variable("b", interpreter.Int(3))
+    |> interpreter.insert_variable("c", interpreter.Int(5))
 
   let assert Ok(program) = interpreter.new(source)
-  let assert Ok(value.String(answer)) = interpreter.execute(program, ctx)
+  let assert Ok(interpreter.String(answer)) = interpreter.execute(program, ctx)
 
   io.println("execution result: " <> answer)
   // execution result: wibble
@@ -71,8 +69,9 @@ This library is still very early in its development. The current state and plann
 - [x] Variable context resolution
 - [x] Functions/macros
 - [x] Context provision through Dynamic
-- [ ] Value → JSON
-- [ ] Type checking
-- [ ] Field inits (`ident{"a": 5}`)
+- [x] Type checking
+- [x] Field inits (`ident{"a": 5}`)
 - [ ] Duration + Timestamp
+- [ ] Value → JSON (separate package)
+- [ ] Value → MsgPack (separate package)
 - [ ] (Maybe) Serializable AST
