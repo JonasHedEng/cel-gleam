@@ -7,9 +7,14 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/order
 import gleam/result
 import gleam/string
+import gleam/time/calendar
+import gleam/time/duration as time_duration
+import gleam/time/timestamp as time_timestamp
 
+import cel/internal/duration_parser
 import cel/parser
 
 // ---- Value ----
@@ -32,6 +37,8 @@ pub type Value {
   Bytes(BitArray)
   Bool(Bool)
   Null
+  Timestamp(time_timestamp.Timestamp)
+  Duration(time_duration.Duration)
 }
 
 pub fn key_from_value(value: Value) -> Result(Key, Nil) {
@@ -103,6 +110,8 @@ pub type Type {
   BytesT
   BoolT
   NullT
+  TimestampT
+  DurationT
 }
 
 pub fn kind(value: Value) -> Type {
@@ -117,6 +126,8 @@ pub fn kind(value: Value) -> Type {
     List(_values) -> ListT(DynamicT)
     Map(_map) -> MapT(DynamicT, DynamicT)
     Null -> NullT
+    Timestamp(_) -> TimestampT
+    Duration(_) -> DurationT
   }
 }
 
@@ -267,6 +278,24 @@ fn std_func_types() -> Dict(String, FuncType) {
         [this, ..args] ->
           Error(BadFunctionArgs(name: "has", this: this, args: args))
         [] -> Error(BadFunctionArgs(name: "has", this: NullT, args: []))
+      }
+    }),
+    #("timestamp", fn(args) {
+      case args {
+        [NullT, StringT] | [NullT, TimestampT] | [NullT, DynamicT] ->
+          Ok(TimestampT)
+        [this, ..rest] ->
+          Error(BadFunctionArgs(name: "timestamp", this: this, args: rest))
+        [] -> Error(BadFunctionArgs(name: "timestamp", this: NullT, args: []))
+      }
+    }),
+    #("duration", fn(args) {
+      case args {
+        [NullT, StringT] | [NullT, DurationT] | [NullT, DynamicT] ->
+          Ok(DurationT)
+        [this, ..rest] ->
+          Error(BadFunctionArgs(name: "duration", this: this, args: rest))
+        [] -> Error(BadFunctionArgs(name: "duration", this: NullT, args: []))
       }
     }),
   ]
@@ -626,6 +655,24 @@ fn check_arith(
     | parser.Add, StringT, DynamicT
     | parser.Add, DynamicT, StringT
     -> Ok(StringT)
+
+    parser.Add, TimestampT, DurationT
+    | parser.Add, DurationT, TimestampT
+    -> Ok(TimestampT)
+    parser.Sub, TimestampT, DurationT
+    | parser.Sub, TimestampT, DynamicT
+    -> Ok(TimestampT)
+    parser.Sub, TimestampT, TimestampT -> Ok(DurationT)
+
+    parser.Add, TimestampT, DynamicT | parser.Add, DynamicT, TimestampT ->
+      Ok(TimestampT)
+
+    parser.Add, DurationT, DurationT -> Ok(DurationT)
+    parser.Sub, DurationT, DurationT -> Ok(DurationT)
+    parser.Add, DurationT, DynamicT | parser.Add, DynamicT, DurationT ->
+      Ok(DurationT)
+    parser.Sub, DurationT, DynamicT -> Ok(DurationT)
+
     _, DynamicT, DynamicT -> Ok(DynamicT)
     _, _, _ -> Error(Nil)
   }
@@ -658,7 +705,21 @@ fn check_relation(
   let is_numerical_comparison =
     op != parser.In && is_number(left_type) && is_number(right_type)
 
+  let is_timestamp_cmp =
+    op != parser.In
+    && { left_type == TimestampT || left_type == DynamicT }
+    && { right_type == TimestampT || right_type == DynamicT }
+    && { left_type == TimestampT || right_type == TimestampT }
+
+  let is_duration_cmp =
+    op != parser.In
+    && { left_type == DurationT || left_type == DynamicT }
+    && { right_type == DurationT || right_type == DynamicT }
+    && { left_type == DurationT || right_type == DurationT }
+
   use <- bool.guard(when: is_numerical_comparison, return: Ok(BoolT))
+  use <- bool.guard(when: is_timestamp_cmp, return: Ok(BoolT))
+  use <- bool.guard(when: is_duration_cmp, return: Ok(BoolT))
 
   case left_type, op, right_type {
     StringT, parser.In, StringT -> Ok(BoolT)
@@ -1496,6 +1557,20 @@ fn evaluate_arithmetic(
     String(l), parser.Add, String(r) -> String(l <> r) |> Ok
     List(l), parser.Add, List(r) -> List(list.flatten([l, r])) |> Ok
 
+    Timestamp(ts), parser.Add, Duration(dur) ->
+      Timestamp(time_timestamp.add(ts, dur)) |> Ok
+    Duration(dur), parser.Add, Timestamp(ts) ->
+      Timestamp(time_timestamp.add(ts, dur)) |> Ok
+    Timestamp(ts), parser.Sub, Duration(dur) ->
+      Timestamp(time_timestamp.subtract(ts, dur)) |> Ok
+    // difference(left, right) = right - left, so for a - b pass (b, a)
+    Timestamp(a), parser.Sub, Timestamp(b) ->
+      Duration(time_timestamp.difference(b, a)) |> Ok
+    Duration(a), parser.Add, Duration(b) ->
+      Duration(time_duration.add(a, b)) |> Ok
+    Duration(a), parser.Sub, Duration(b) ->
+      Duration(time_duration.difference(b, a)) |> Ok
+
     l, parser.Add, r -> UnsupportedBinop(kind(l), "+", kind(r)) |> Error
     l, parser.Div, r -> UnsupportedBinop(kind(l), "/", kind(r)) |> Error
     l, parser.Mod, r -> UnsupportedBinop(kind(l), "%", kind(r)) |> Error
@@ -1606,6 +1681,24 @@ fn evaluate_relation(
     Float(l), parser.LessThan, UInt(r) -> Bool(l <. int.to_float(r)) |> Ok
     Float(l), parser.GreaterThanEq, UInt(r) -> Bool(l >=. int.to_float(r)) |> Ok
     Float(l), parser.GreaterThan, UInt(r) -> Bool(l >. int.to_float(r)) |> Ok
+
+    Timestamp(a), parser.LessThan, Timestamp(b) ->
+      Bool(time_timestamp.compare(a, b) == order.Lt) |> Ok
+    Timestamp(a), parser.LessThanEq, Timestamp(b) ->
+      Bool(time_timestamp.compare(a, b) != order.Gt) |> Ok
+    Timestamp(a), parser.GreaterThan, Timestamp(b) ->
+      Bool(time_timestamp.compare(a, b) == order.Gt) |> Ok
+    Timestamp(a), parser.GreaterThanEq, Timestamp(b) ->
+      Bool(time_timestamp.compare(a, b) != order.Lt) |> Ok
+
+    Duration(a), parser.LessThan, Duration(b) ->
+      Bool(time_duration.compare(a, b) == order.Lt) |> Ok
+    Duration(a), parser.LessThanEq, Duration(b) ->
+      Bool(time_duration.compare(a, b) != order.Gt) |> Ok
+    Duration(a), parser.GreaterThan, Duration(b) ->
+      Bool(time_duration.compare(a, b) == order.Gt) |> Ok
+    Duration(a), parser.GreaterThanEq, Duration(b) ->
+      Bool(time_duration.compare(a, b) != order.Lt) |> Ok
 
     String(l), parser.In, String(r) -> Bool(string.contains(r, l)) |> Ok
 
@@ -2146,9 +2239,13 @@ pub fn to_int(ftx: FunctionContext) -> Result(Value, ExecutionError) {
       int.parse(s)
       |> result.map(Int)
       |> result.replace_error(ConversionError(value: s, to: "int"))
+    Timestamp(ts) -> {
+      let #(secs, _) = time_timestamp.to_unix_seconds_and_nanoseconds(ts)
+      Ok(Int(secs))
+    }
     other ->
       Error(UnexpectedType(
-        expected: [IntT, UIntT, FloatT, StringT],
+        expected: [IntT, UIntT, FloatT, StringT, TimestampT],
         got: kind(other),
         in_context: name,
       ))
@@ -2223,12 +2320,36 @@ pub fn to_string(ftx: FunctionContext) -> Result(Value, ExecutionError) {
       bit_array.to_string(b)
       |> result.map(String)
       |> result.replace_error(ConversionError(value: "<bytes>", to: "string"))
+    Timestamp(ts) ->
+      Ok(String(time_timestamp.to_rfc3339(ts, calendar.utc_offset)))
+    Duration(dur) -> {
+      // CEL spec: string(duration) -> seconds with fractional seconds + "s"
+      // e.g., duration("1m1ms") -> "60.001s"
+      let #(secs, nanos) = time_duration.to_seconds_and_nanoseconds(dur)
+      let s = case nanos {
+        0 -> int.to_string(secs) <> "s"
+        _ -> {
+          let frac = string.pad_start(int.to_string(int.absolute_value(nanos)), 9, "0")
+          // Trim trailing zeros
+          let frac = string.trim_end(frac) |> trim_trailing_zeros
+          int.to_string(secs) <> "." <> frac <> "s"
+        }
+      }
+      Ok(String(s))
+    }
     other ->
       Error(UnexpectedType(
-        expected: [IntT, UIntT, FloatT, BoolT, BytesT],
+        expected: [IntT, UIntT, FloatT, BoolT, BytesT, TimestampT, DurationT],
         got: kind(other),
         in_context: name,
       ))
+  }
+}
+
+fn trim_trailing_zeros(s: String) -> String {
+  case string.ends_with(s, "0") {
+    True -> trim_trailing_zeros(string.drop_end(s, 1))
+    False -> s
   }
 }
 
@@ -2287,8 +2408,172 @@ pub fn type_of(ftx: FunctionContext) -> Result(Value, ExecutionError) {
     List(_) -> "list"
     Map(_) -> "map"
     Function(_, _) -> "function"
+    Timestamp(_) -> "google.protobuf.Timestamp"
+    Duration(_) -> "google.protobuf.Duration"
   }
   Ok(String(type_name))
+}
+
+pub fn cel_timestamp(ftx: FunctionContext) -> Result(Value, ExecutionError) {
+  let FunctionContext(name:, ctx:, args:, ..) = ftx
+  use expr <- result.try(case args {
+    [expr] -> evaluate_expr(expr, ctx)
+    _ -> Error(InvalidFunctionArgs(function: name))
+  })
+  case expr {
+    Timestamp(_) -> Ok(expr)
+    String(s) ->
+      time_timestamp.parse_rfc3339(s)
+      |> result.map(Timestamp)
+      |> result.replace_error(ConversionError(value: s, to: "timestamp"))
+    other ->
+      Error(UnexpectedType(
+        expected: [StringT, TimestampT],
+        got: kind(other),
+        in_context: name,
+      ))
+  }
+}
+
+pub fn cel_duration(ftx: FunctionContext) -> Result(Value, ExecutionError) {
+  let FunctionContext(name:, ctx:, args:, ..) = ftx
+  use expr <- result.try(case args {
+    [expr] -> evaluate_expr(expr, ctx)
+    _ -> Error(InvalidFunctionArgs(function: name))
+  })
+  case expr {
+    Duration(_) -> Ok(expr)
+    String(s) ->
+      duration_parser.parse(s)
+      |> result.map(Duration)
+      |> result.replace_error(ConversionError(value: s, to: "duration"))
+    other ->
+      Error(UnexpectedType(
+        expected: [StringT, DurationT],
+        got: kind(other),
+        in_context: name,
+      ))
+  }
+}
+
+// ---- Timestamp/Duration member helpers ----
+
+fn is_leap_year_int(year: Int) -> Bool {
+  { year % 4 == 0 && year % 100 != 0 } || year % 400 == 0
+}
+
+fn days_in_month(year: Int, month: Int) -> Int {
+  case month {
+    1 | 3 | 5 | 7 | 8 | 10 | 12 -> 31
+    4 | 6 | 9 | 11 -> 30
+    2 ->
+      case is_leap_year_int(year) {
+        True -> 29
+        False -> 28
+      }
+    _ -> 0
+  }
+}
+
+fn days_before_month(year: Int, month: Int, acc: Int) -> Int {
+  case month <= 1 {
+    True -> acc
+    False ->
+      days_before_month(year, month - 1, acc + days_in_month(year, month - 1))
+  }
+}
+
+fn day_of_year(date: calendar.Date) -> Int {
+  let month_int = calendar.month_to_int(date.month)
+  days_before_month(date.year, month_int, 0) + date.day - 1
+}
+
+fn floored_div(a: Int, b: Int) -> Int {
+  let q = a / b
+  case a % b != 0 && { a < 0 } != { b < 0 } {
+    True -> q - 1
+    False -> q
+  }
+}
+
+fn int_mod(a: Int, b: Int) -> Int {
+  let r = a % b
+  case r < 0 {
+    True -> r + b
+    False -> r
+  }
+}
+
+fn day_of_week_for(ts: time_timestamp.Timestamp) -> Int {
+  let #(unix_secs, _) = time_timestamp.to_unix_seconds_and_nanoseconds(ts)
+  // Unix epoch (1970-01-01) was a Thursday = weekday 4 (0=Sunday)
+  int_mod(floored_div(unix_secs, 86_400) + 4, 7)
+}
+
+fn timestamp_member(ftx: FunctionContext) -> Result(Value, ExecutionError) {
+  case ftx.this, ftx.args {
+    Some(Timestamp(ts)), [] -> {
+      let #(date, time) = time_timestamp.to_calendar(ts, calendar.utc_offset)
+      case ftx.name {
+        "getFullYear" -> Ok(Int(date.year))
+        "getMonth" -> Ok(Int(calendar.month_to_int(date.month) - 1))
+        "getDayOfMonth" -> Ok(Int(date.day - 1))
+        "getDate" -> Ok(Int(date.day))
+        "getDayOfYear" -> Ok(Int(day_of_year(date)))
+        "getDayOfWeek" -> Ok(Int(day_of_week_for(ts)))
+        "getHours" -> Ok(Int(time.hours))
+        "getMinutes" -> Ok(Int(time.minutes))
+        "getSeconds" -> Ok(Int(time.seconds))
+        "getMilliseconds" -> Ok(Int(time.nanoseconds / 1_000_000))
+        _ -> Error(InvalidFunctionArgs(function: ftx.name))
+      }
+    }
+    Some(Timestamp(_)), _ -> Error(InvalidFunctionArgs(function: ftx.name))
+    Some(other), _ ->
+      Error(UnexpectedType(
+        expected: [TimestampT],
+        got: kind(other),
+        in_context: ftx.name,
+      ))
+    None, _ -> Error(FunctionExpectedThis(function: ftx.name))
+  }
+}
+
+fn duration_member(ftx: FunctionContext) -> Result(Value, ExecutionError) {
+  case ftx.this, ftx.args {
+    Some(Duration(dur)), [] -> {
+      let #(secs, nanos) = time_duration.to_seconds_and_nanoseconds(dur)
+      case ftx.name {
+        "getHours" -> Ok(Int(secs / 3600))
+        "getMinutes" -> Ok(Int(secs / 60 % 60))
+        "getSeconds" -> Ok(Int(secs % 60))
+        "getMilliseconds" -> Ok(Int(nanos / 1_000_000))
+        _ -> Error(InvalidFunctionArgs(function: ftx.name))
+      }
+    }
+    Some(Duration(_)), _ -> Error(InvalidFunctionArgs(function: ftx.name))
+    Some(other), _ ->
+      Error(UnexpectedType(
+        expected: [DurationT],
+        got: kind(other),
+        in_context: ftx.name,
+      ))
+    None, _ -> Error(FunctionExpectedThis(function: ftx.name))
+  }
+}
+
+fn time_member(ftx: FunctionContext) -> Result(Value, ExecutionError) {
+  case ftx.this {
+    Some(Timestamp(_)) -> timestamp_member(ftx)
+    Some(Duration(_)) -> duration_member(ftx)
+    Some(other) ->
+      Error(UnexpectedType(
+        expected: [TimestampT, DurationT],
+        got: kind(other),
+        in_context: ftx.name,
+      ))
+    None -> Error(FunctionExpectedThis(function: ftx.name))
+  }
 }
 
 // ---- Program ----
@@ -2330,6 +2615,18 @@ pub fn default_context() -> Context {
     [iter(a), a, bool],
     bool,
   ))
+  |> insert_function("timestamp", cel_timestamp)
+  |> insert_function("duration", cel_duration)
+  |> insert_function("getFullYear", timestamp_member)
+  |> insert_function("getMonth", timestamp_member)
+  |> insert_function("getDayOfMonth", timestamp_member)
+  |> insert_function("getDate", timestamp_member)
+  |> insert_function("getDayOfYear", timestamp_member)
+  |> insert_function("getDayOfWeek", timestamp_member)
+  |> insert_function("getHours", time_member)
+  |> insert_function("getMinutes", time_member)
+  |> insert_function("getSeconds", time_member)
+  |> insert_function("getMilliseconds", time_member)
 }
 
 pub fn new(from source: String) -> Result(Program, parser.ParseError) {
