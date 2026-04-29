@@ -8,7 +8,8 @@ pub fn resolve_and_compute_test() {
   let source = "a + 5u"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx = interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+  let ctx =
+    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(interpreter.UInt(7)))
@@ -18,7 +19,8 @@ pub fn list_test() {
   let source = "[a + 5u, a - 1u]"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx = interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+  let ctx =
+    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
 
   let expected =
     [interpreter.UInt(7), interpreter.UInt(1)]
@@ -32,7 +34,8 @@ pub fn ternary_test() {
   let source = "a == 2 ? 3 : 5"
   let assert Ok(program) = interpreter.new(source)
 
-  let ctx = interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
+  let ctx =
+    interpreter.empty() |> interpreter.insert_variable("a", interpreter.UInt(2))
 
   interpreter.execute(program, ctx)
   |> should.equal(Ok(interpreter.Int(3)))
@@ -112,7 +115,9 @@ pub fn function_call_ternary_test() {
   let ctx = interpreter.default_context()
 
   interpreter.execute(program, ctx)
-  |> should.equal(Ok(interpreter.List([interpreter.Int(2), interpreter.Int(4)])))
+  |> should.equal(
+    Ok(interpreter.List([interpreter.Int(2), interpreter.Int(4)])),
+  )
 }
 
 pub fn expr_key_map_test() {
@@ -164,17 +169,26 @@ pub fn filter_then_map_test() {
     interpreter.List([
       interpreter.Map(
         dict.new()
-        |> dict.insert(interpreter.KeyString("item"), interpreter.String("apple"))
+        |> dict.insert(
+          interpreter.KeyString("item"),
+          interpreter.String("apple"),
+        )
         |> dict.insert(interpreter.KeyString("price"), interpreter.Float(1.5)),
       ),
       interpreter.Map(
         dict.new()
-        |> dict.insert(interpreter.KeyString("item"), interpreter.String("banana"))
+        |> dict.insert(
+          interpreter.KeyString("item"),
+          interpreter.String("banana"),
+        )
         |> dict.insert(interpreter.KeyString("price"), interpreter.Float(0.5)),
       ),
       interpreter.Map(
         dict.new()
-        |> dict.insert(interpreter.KeyString("item"), interpreter.String("cherry"))
+        |> dict.insert(
+          interpreter.KeyString("item"),
+          interpreter.String("cherry"),
+        )
         |> dict.insert(interpreter.KeyString("price"), interpreter.Float(2.0)),
       ),
     ])
@@ -189,12 +203,18 @@ pub fn filter_then_map_test() {
       interpreter.List([
         interpreter.Map(
           dict.new()
-          |> dict.insert(interpreter.KeyString("item"), interpreter.String("apple"))
+          |> dict.insert(
+            interpreter.KeyString("item"),
+            interpreter.String("apple"),
+          )
           |> dict.insert(interpreter.KeyString("price"), interpreter.Float(1.5)),
         ),
         interpreter.Map(
           dict.new()
-          |> dict.insert(interpreter.KeyString("item"), interpreter.String("cherry"))
+          |> dict.insert(
+            interpreter.KeyString("item"),
+            interpreter.String("cherry"),
+          )
           |> dict.insert(interpreter.KeyString("price"), interpreter.Float(2.0)),
         ),
       ]),
@@ -217,14 +237,20 @@ pub fn filter_then_map_identity_with_column_vars_test() {
   let banana =
     interpreter.Map(
       dict.new()
-      |> dict.insert(interpreter.KeyString("Item"), interpreter.String("Banana"))
+      |> dict.insert(
+        interpreter.KeyString("Item"),
+        interpreter.String("Banana"),
+      )
       |> dict.insert(interpreter.KeyString("Price"), interpreter.Float(0.75))
       |> dict.insert(interpreter.KeyString("Qty"), interpreter.Int(20)),
     )
   let cherry =
     interpreter.Map(
       dict.new()
-      |> dict.insert(interpreter.KeyString("Item"), interpreter.String("Cherry"))
+      |> dict.insert(
+        interpreter.KeyString("Item"),
+        interpreter.String("Cherry"),
+      )
       |> dict.insert(interpreter.KeyString("Price"), interpreter.Float(2.0))
       |> dict.insert(interpreter.KeyString("Qty"), interpreter.Int(5)),
     )
@@ -253,7 +279,11 @@ pub fn filter_then_map_identity_with_column_vars_test() {
     )
     |> interpreter.insert_variable(
       "Qty",
-      interpreter.List([interpreter.Int(10), interpreter.Int(20), interpreter.Int(5)]),
+      interpreter.List([
+        interpreter.Int(10),
+        interpreter.Int(20),
+        interpreter.Int(5),
+      ]),
     )
 
   interpreter.execute(program, ctx)
@@ -482,7 +512,9 @@ pub fn field_init_nested_test() {
           #(
             interpreter.KeyString("inner"),
             interpreter.Map(
-              dict.from_list([#(interpreter.KeyString("v"), interpreter.Int(42))]),
+              dict.from_list([
+                #(interpreter.KeyString("v"), interpreter.Int(42)),
+              ]),
             ),
           ),
         ]),

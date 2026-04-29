@@ -1420,7 +1420,7 @@ pub fn resolve_function(
 
 // ---- Evaluate ----
 
-fn evaluate_expr(
+pub fn evaluate_expression(
   expr: parser.Expression,
   ctx: Context,
 ) -> Result(Value, ExecutionError) {
@@ -1443,7 +1443,7 @@ fn evaluate_expr(
     parser.Member(_, parser.Fields(fields)) -> {
       list.try_map(fields, fn(field) {
         let #(name, value_expr) = field
-        use value <- result.map(evaluate_expr(parser.expr(value_expr), ctx))
+        use value <- result.map(evaluate_expression(parser.expr(value_expr), ctx))
         #(KeyString(name), value)
       })
       |> result.map(dict.from_list)
@@ -1451,30 +1451,30 @@ fn evaluate_expr(
     }
 
     parser.Member(ident, parser.Attribute(name)) -> {
-      use parent <- result.try(evaluate_expr(parser.expr(ident), ctx))
+      use parent <- result.try(evaluate_expression(parser.expr(ident), ctx))
       resolve_member(ctx, parent, Attr(name))
     }
 
     parser.Member(ident, parser.Index(i)) -> {
-      use parent <- result.try(evaluate_expr(parser.expr(ident), ctx))
+      use parent <- result.try(evaluate_expression(parser.expr(ident), ctx))
       resolve_member(ctx, parent, Idx(i))
     }
 
     parser.List(exprs) -> {
-      list.try_map(exprs, fn(l) { evaluate_expr(parser.expr(l), ctx) })
+      list.try_map(exprs, fn(l) { evaluate_expression(parser.expr(l), ctx) })
       |> result.map(List)
     }
     parser.Map(fields) -> {
       list.try_map(fields, fn(field) {
         let #(field_key, field_value) = field
 
-        use field_key <- result.try(evaluate_expr(parser.expr(field_key), ctx))
+        use field_key <- result.try(evaluate_expression(parser.expr(field_key), ctx))
 
         use key <- result.try(
           key_from_value(field_key)
           |> result.map_error(fn(_) { InvalidValueAsKey(field_key) }),
         )
-        use val <- result.try(evaluate_expr(parser.expr(field_value), ctx))
+        use val <- result.try(evaluate_expression(parser.expr(field_value), ctx))
 
         Ok(#(key, val))
       })
@@ -1485,7 +1485,7 @@ fn evaluate_expr(
     parser.FunctionCall(ident, this, args) -> {
       use target <- result.try(case this {
         Some(expr) -> {
-          evaluate_expr(parser.expr(expr), ctx) |> result.map(Some)
+          evaluate_expression(parser.expr(expr), ctx) |> result.map(Some)
         }
         None -> Ok(None)
       })
@@ -1528,8 +1528,8 @@ fn evaluate_arithmetic(
   rhs: parser.Expression,
   ctx: Context,
 ) -> Result(Value, ExecutionError) {
-  use lhs_value <- result.try(evaluate_expr(lhs, ctx))
-  use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+  use lhs_value <- result.try(evaluate_expression(lhs, ctx))
+  use rhs_value <- result.try(evaluate_expression(rhs, ctx))
 
   case lhs_value, op, rhs_value {
     Int(l), parser.Add, Int(r) -> Int(l + r) |> Ok
@@ -1585,12 +1585,12 @@ fn evaluate_logical(
   rhs: parser.Expression,
   ctx: Context,
 ) -> Result(Value, ExecutionError) {
-  use lhs_value <- result.try(evaluate_expr(lhs, ctx))
+  use lhs_value <- result.try(evaluate_expression(lhs, ctx))
   case lhs_value, op {
     Bool(False), parser.And -> Ok(Bool(False))
     Bool(True), parser.Or -> Ok(Bool(True))
     Bool(l), parser.And -> {
-      use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+      use rhs_value <- result.try(evaluate_expression(rhs, ctx))
       case rhs_value {
         Bool(r) -> Ok(Bool(l && r))
         r ->
@@ -1599,7 +1599,7 @@ fn evaluate_logical(
       }
     }
     Bool(l), parser.Or -> {
-      use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+      use rhs_value <- result.try(evaluate_expression(rhs, ctx))
       case rhs_value {
         Bool(r) -> Ok(Bool(l || r))
         r ->
@@ -1630,8 +1630,8 @@ fn evaluate_relation(
   rhs: parser.Expression,
   ctx: Context,
 ) -> Result(Value, ExecutionError) {
-  use lhs_value <- result.try(evaluate_expr(lhs, ctx))
-  use rhs_value <- result.try(evaluate_expr(rhs, ctx))
+  use lhs_value <- result.try(evaluate_expression(lhs, ctx))
+  use rhs_value <- result.try(evaluate_expression(rhs, ctx))
 
   case lhs_value, op, rhs_value {
     l, parser.Equals, r -> Bool(values_equal(l, r)) |> Ok
@@ -1735,11 +1735,11 @@ fn evaluate_ternary(
   otherwise: parser.Expression,
   ctx: Context,
 ) -> Result(Value, ExecutionError) {
-  use cond_val <- result.try(evaluate_expr(cond, ctx))
+  use cond_val <- result.try(evaluate_expression(cond, ctx))
 
   case cond_val {
-    Bool(True) -> evaluate_expr(then, ctx)
-    Bool(False) -> evaluate_expr(otherwise, ctx)
+    Bool(True) -> evaluate_expression(then, ctx)
+    Bool(False) -> evaluate_expression(otherwise, ctx)
     _ -> Error(UnsupportedTernaryCondition(kind(cond_val)))
   }
 }
@@ -1749,7 +1749,7 @@ fn evaluate_unary(
   expr: parser.Expression,
   ctx: Context,
 ) -> Result(Value, ExecutionError) {
-  use val <- result.try(evaluate_expr(expr, ctx))
+  use val <- result.try(evaluate_expression(expr, ctx))
 
   case op, val {
     parser.Not, Bool(b) -> Bool(!b) |> Ok
@@ -1792,7 +1792,7 @@ fn resolve_member(
     }
 
     Idx(i) -> {
-      use index <- result.try(evaluate_expr(parser.expr(i), ctx))
+      use index <- result.try(evaluate_expression(parser.expr(i), ctx))
 
       case parent, index {
         List(container), Int(idx) | List(container), UInt(idx) -> {
@@ -1835,7 +1835,7 @@ fn filter_impl(
     [] -> Ok(list.reverse(filtered))
     [item, ..rest] -> {
       let inner_ctx = new_inner(ctx) |> insert_variable(ident, item)
-      use cond <- result.try(evaluate_expr(expr, inner_ctx))
+      use cond <- result.try(evaluate_expression(expr, inner_ctx))
 
       use filtered <- result.try(case cond {
         Bool(True) -> Ok([item, ..filtered])
@@ -1893,7 +1893,7 @@ fn map_impl(
     [] -> Ok(list.reverse(mapped))
     [item, ..rest] -> {
       let inner_ctx = new_inner(ctx) |> insert_variable(ident, item)
-      use value <- result.try(evaluate_expr(expr, inner_ctx))
+      use value <- result.try(evaluate_expression(expr, inner_ctx))
 
       map_impl(ctx, ident, rest, [value, ..mapped], expr)
     }
@@ -1912,10 +1912,10 @@ fn map_filtered_impl(
     [] -> Ok(list.reverse(mapped))
     [item, ..rest] -> {
       let inner_ctx = new_inner(ctx) |> insert_variable(ident, item)
-      use cond <- result.try(evaluate_expr(pred, inner_ctx))
+      use cond <- result.try(evaluate_expression(pred, inner_ctx))
       case cond {
         Bool(True) -> {
-          use mapped_val <- result.try(evaluate_expr(expr, inner_ctx))
+          use mapped_val <- result.try(evaluate_expression(expr, inner_ctx))
           map_filtered_impl(
             ctx,
             ident,
@@ -1983,7 +1983,7 @@ fn all_impl(
     [] -> Ok(True)
     [item, ..rest] -> {
       let inner_ctx = new_inner(ctx) |> insert_variable(ident, item)
-      use cond <- result.try(evaluate_expr(expr, inner_ctx))
+      use cond <- result.try(evaluate_expression(expr, inner_ctx))
 
       case cond {
         Bool(True) -> all_impl(ctx, ident, rest, expr)
@@ -2026,7 +2026,7 @@ pub fn size(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, this: _this, args:) = ftx
 
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
 
@@ -2054,7 +2054,7 @@ pub fn has(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 
   use exists <- result.map(case args {
     [parser.Ident(_) as expr] | [parser.Member(_, parser.Attribute(_)) as expr] ->
-      case evaluate_expr(expr, ctx) {
+      case evaluate_expression(expr, ctx) {
         Ok(_) -> Ok(True)
         Error(ContextError(NoSuchKey(_)))
         | Error(ContextError(UnknownIdentifier(_))) -> Ok(False)
@@ -2076,7 +2076,7 @@ fn exists_impl(
     [] -> Ok(False)
     [item, ..rest] -> {
       let inner_ctx = new_inner(ctx) |> insert_variable(ident, item)
-      use cond <- result.try(evaluate_expr(expr, inner_ctx))
+      use cond <- result.try(evaluate_expression(expr, inner_ctx))
 
       case cond {
         Bool(True) -> Ok(True)
@@ -2126,7 +2126,7 @@ fn exists_one_impl(
     [] -> Ok(found)
     [item, ..rest] -> {
       let inner_ctx = new_inner(ctx) |> insert_variable(ident, item)
-      use cond <- result.try(evaluate_expr(expr, inner_ctx))
+      use cond <- result.try(evaluate_expression(expr, inner_ctx))
 
       case cond, found {
         Bool(True), True -> Ok(False)
@@ -2192,7 +2192,7 @@ fn require_one_string_arg(
 ) -> Result(String, ExecutionError) {
   case ftx.args {
     [expr] -> {
-      use val <- result.try(evaluate_expr(expr, ftx.ctx))
+      use val <- result.try(evaluate_expression(expr, ftx.ctx))
       case val {
         String(s) -> Ok(s)
         other ->
@@ -2228,7 +2228,7 @@ pub fn ends_with(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn to_int(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2255,7 +2255,7 @@ pub fn to_int(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn to_uint(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2278,7 +2278,7 @@ pub fn to_uint(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn to_double(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2301,7 +2301,7 @@ pub fn to_double(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn to_string(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2356,7 +2356,7 @@ fn trim_trailing_zeros(s: String) -> String {
 pub fn to_bool(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2376,7 +2376,7 @@ pub fn to_bool(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn to_bytes(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2394,7 +2394,7 @@ pub fn to_bytes(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn type_of(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   let type_name = case expr {
@@ -2417,7 +2417,7 @@ pub fn type_of(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn cel_timestamp(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2438,7 +2438,7 @@ pub fn cel_timestamp(ftx: FunctionContext) -> Result(Value, ExecutionError) {
 pub fn cel_duration(ftx: FunctionContext) -> Result(Value, ExecutionError) {
   let FunctionContext(name:, ctx:, args:, ..) = ftx
   use expr <- result.try(case args {
-    [expr] -> evaluate_expr(expr, ctx)
+    [expr] -> evaluate_expression(expr, ctx)
     _ -> Error(InvalidFunctionArgs(function: name))
   })
   case expr {
@@ -2635,5 +2635,5 @@ pub fn new(from source: String) -> Result(Program, parser.ParseError) {
 }
 
 pub fn execute(program: Program, ctx: Context) -> Result(Value, ExecutionError) {
-  evaluate_expr(parser.expr(program.expr), ctx)
+  evaluate_expression(parser.expr(program.expr), ctx)
 }
