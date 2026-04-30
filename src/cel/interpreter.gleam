@@ -1554,6 +1554,44 @@ fn evaluate_arithmetic(
     Float(l), parser.Mul, Float(r) -> Float(l *. r) |> Ok
     Float(l), parser.Sub, Float(r) -> Float(l -. r) |> Ok
 
+    Float(l), parser.Add, Int(r) -> Float(l +. int.to_float(r)) |> Ok
+    Float(l), parser.Sub, Int(r) -> Float(l -. int.to_float(r)) |> Ok
+    Float(l), parser.Mul, Int(r) -> Float(l *. int.to_float(r)) |> Ok
+    Float(l), parser.Div, Int(r) -> Float(l /. int.to_float(r)) |> Ok
+    Float(l), parser.Mod, Int(r) ->
+      case float.modulo(l, int.to_float(r)) {
+        Ok(m) -> Ok(Float(m))
+        Error(_) -> Error(ArithmeticError)
+      }
+    Int(l), parser.Add, Float(r) -> Float(int.to_float(l) +. r) |> Ok
+    Int(l), parser.Sub, Float(r) -> Float(int.to_float(l) -. r) |> Ok
+    Int(l), parser.Mul, Float(r) -> Float(int.to_float(l) *. r) |> Ok
+    Int(l), parser.Div, Float(r) -> Float(int.to_float(l) /. r) |> Ok
+    Int(l), parser.Mod, Float(r) ->
+      case float.modulo(int.to_float(l), r) {
+        Ok(m) -> Ok(Float(m))
+        Error(_) -> Error(ArithmeticError)
+      }
+
+    Float(l), parser.Add, UInt(r) -> Float(l +. int.to_float(r)) |> Ok
+    Float(l), parser.Sub, UInt(r) -> Float(l -. int.to_float(r)) |> Ok
+    Float(l), parser.Mul, UInt(r) -> Float(l *. int.to_float(r)) |> Ok
+    Float(l), parser.Div, UInt(r) -> Float(l /. int.to_float(r)) |> Ok
+    Float(l), parser.Mod, UInt(r) ->
+      case float.modulo(l, int.to_float(r)) {
+        Ok(m) -> Ok(Float(m))
+        Error(_) -> Error(ArithmeticError)
+      }
+    UInt(l), parser.Add, Float(r) -> Float(int.to_float(l) +. r) |> Ok
+    UInt(l), parser.Sub, Float(r) -> Float(int.to_float(l) -. r) |> Ok
+    UInt(l), parser.Mul, Float(r) -> Float(int.to_float(l) *. r) |> Ok
+    UInt(l), parser.Div, Float(r) -> Float(int.to_float(l) /. r) |> Ok
+    UInt(l), parser.Mod, Float(r) ->
+      case float.modulo(int.to_float(l), r) {
+        Ok(m) -> Ok(Float(m))
+        Error(_) -> Error(ArithmeticError)
+      }
+
     String(l), parser.Add, String(r) -> String(l <> r) |> Ok
     List(l), parser.Add, List(r) -> List(list.flatten([l, r])) |> Ok
 
@@ -2412,6 +2450,10 @@ pub fn type_of(ftx: FunctionContext) -> Result(Value, ExecutionError) {
     Duration(_) -> "google.protobuf.Duration"
   }
   Ok(String(type_name))
+}
+
+pub fn parse_duration(s: String) -> Result(time_duration.Duration, Nil) {
+  duration_parser.parse(s)
 }
 
 pub fn cel_timestamp(ftx: FunctionContext) -> Result(Value, ExecutionError) {
